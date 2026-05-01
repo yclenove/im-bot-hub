@@ -8,6 +8,49 @@
 
 ## [Unreleased] 未发布
 
+### V2 重构 / V2 Refactoring
+
+#### 品牌重塑 / Rebranding
+
+- **项目重命名**：`telegram-query-bot` → `im-bot-hub`（pom.xml artifactId、spring.application.name、README、AGENTS、前端标题）。 / Project renamed from `telegram-query-bot` to `im-bot-hub`.
+- **Java 包名重命名**：`com.sov.telegram.bot` → `com.sov.imhub`（127 个 Java 文件全量迁移）。 / Java package renamed from `com.sov.telegram.bot` to `com.sov.imhub`.
+- **主类重命名**：`TelegramQueryBotApplication` → `ImBotHubApplication`。 / Main class renamed.
+- **V2 文档体系**：新增 PRD-V2、需求分析-V2、设计文档-V2、测试策略-V2、迁移指南。 / Added V2 docs: PRD, requirements, design, test strategy, migration guide.
+
+#### 数据模型重构 / Data Model
+
+- **Flyway V14**：新建 `t_channel_allowlist`（通用渠道白名单，替代 TG 专属 `t_user_allowlist`）。 / New `t_channel_allowlist` table for platform-agnostic allowlist.
+- **Flyway V15**：新建 `t_command_log`（通用命令日志，替代 `t_telegram_query_log`）。 / New `t_command_log` table replacing TG-specific log.
+- **Flyway V16**：Bot-Channel 分离数据迁移（TG token 迁入 `t_bot_channel`、回填 `primary_channel_id`、白名单迁移）。 / Bot-Channel separation: TG tokens migrated to channels, allowlist migrated.
+- **Bot Entity 增强**：新增 `primaryChannelId` 字段。 / Bot entity: added `primaryChannelId`.
+- **BotChannel Entity 增强**：新增 `name`、`webhookSecretToken`、`chatScope`、`allowedChatIdsJson`。 / BotChannel entity: added name, webhook secret, chat scope, allowed chat IDs.
+- **ImPlatform 枚举扩展**：新增 `SLACK`、`DISCORD`。 / ImPlatform enum: added SLACK, DISCORD.
+
+#### 后端服务重构 / Backend Services
+
+- **ChannelCredentialResolver**：从 `t_bot_channel.credentials_json` 解析平台凭据。 / New service for resolving channel credentials.
+- **ChannelAllowlistService**：通用渠道白名单服务，替代 TG 专属白名单逻辑。 / New service replacing TG-specific allowlist.
+- **CommandLogService**：通用命令日志服务，替代 `TelegramQueryLogService`。 / New service replacing TG-specific log service.
+- **QueryOrchestrationService 去耦合**：白名单检查改用 `ChannelAllowlistService`，日志改用 `CommandLogService`。 / Orchestration decoupled from TG-specific services.
+
+#### API/DTO 重构 / API & DTO
+
+- **Bot DTO 标记废弃**：`BotCreateRequest`/`BotResponse` 中 TG 专属字段标记 `@Deprecated`。 / Bot DTOs: TG-specific fields marked deprecated.
+- **新增命令日志 API**：`GET /api/admin/command-logs`（替代 `/api/admin/telegram-query-logs`），支持 platform/channelId 筛选。 / New command log API with platform/channel filters.
+- **新增渠道白名单 API**：`/api/admin/channels/{channelId}/allowlist` CRUD。 / New channel allowlist API.
+
+#### 前端重构 / Frontend
+
+- **品牌更新**：登录页、管理端标题、页面 title 改为 `IM Bot Hub`。 / UI branding updated to IM Bot Hub.
+- **Bot 表单重构**：Telegram 配置折叠到「Telegram 配置（旧版）」面板，主表单仅保留名称+启用。 / Bot form: TG config collapsed into legacy section.
+- **命令日志 Tab**：改用 `/api/admin/command-logs`，筛选参数适配新字段。 / Log tab: switched to new command-logs API.
+- **Bot 列表**：新增「主渠道 ID」列，移除 TG Token/用户名列。 / Bot table: added primary channel ID, removed TG columns.
+
+#### 新平台接入 / New Platforms
+
+- **Slack 接入**：`SlackWebhookController` + `SlackWebhookService` + `SlackOutboundMessenger`（Events API + chat.postMessage）。 / Slack integration: webhook + outbound messenger.
+- **Discord 接入**：`DiscordWebhookController` + `DiscordWebhookService` + `DiscordOutboundMessenger`（Interactions Endpoint + channel messages）。 / Discord integration: webhook + outbound messenger.
+
 ### 变更 Changed
 
 - **配置实体软删除**：`bot`、`datasource`、`query_definition`、`bot_channel` 已切换为逻辑删除方案；删除时默认只隐藏配置并保留可追溯关系，运行时与管理端默认过滤已删除记录，`query_definition` 通过 `delete_token` 释放 `(bot_id, command)` 唯一约束以支持命令复用。 / `bot`, `datasource`, `query_definition`, and `bot_channel` now use soft delete; runtime/admin queries filter deleted rows by default, and `query_definition` uses `delete_token` to release `(bot_id, command)` uniqueness for command reuse.

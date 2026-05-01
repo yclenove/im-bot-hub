@@ -11,18 +11,19 @@
 ## 当前进度
 
 - [x] 阶段 0：文档准备 — PRD-V2、需求分析-V2、设计文档-V2、迁移指南、测试策略-V2 已完成
-- [ ] **阶段 0.5：品牌重塑** ← 下一步
+- [x] **阶段 0.5：品牌重塑** ✅
   - pom.xml artifactId → `im-bot-hub`
   - 目录移动：`com.sov.telegram.bot` → `com.sov.imhub`
   - 全局替换包名、import、Spring 应用名
   - application.yml: `spring.application.name: im-bot-hub`
   - admin-ui 标题更新
-  - `mvn test` + `npm run build` 验证
-- [ ] 阶段 1：数据层重构（Flyway V14-V16，V13 已用于软删除）
-- [ ] 阶段 2：Service 层重构
-- [ ] 阶段 3：API/DTO 层重构
-- [ ] 阶段 4：前端重构
-- [ ] 阶段 5：新功能 + 文档同步
+  - `mvn compile` + `npm run build` 验证通过
+- [x] 阶段 1：数据层重构 ✅（Flyway V14-V16，新 Domain 实体 + Mapper）
+- [x] 阶段 2：Service 层重构 ✅（ChannelCredentialResolver / ChannelAllowlistService / CommandLogService / QueryOrchestrationService 去耦合）
+- [x] 阶段 3：API/DTO 层重构 ✅（Bot DTO 废弃 TG 字段 / CommandLog API / Channel Allowlist API）
+- [x] 阶段 4：前端重构 ✅（Bot 表单折叠 TG 配置 / 命令日志 Tab 适配新 API）
+- [x] 阶段 5：新平台接入 ✅（Slack + Discord Webhook + OutboundMessenger）
+- [ ] **下一步**：提交到 im-bot-hub 仓库、`mvn test` 全量验证、部署测试
 
 ## 关键文档
 

@@ -9,17 +9,17 @@
 ### 1.1 前置条件
 
 - 备份 `tg_query_meta` 数据库
-- 确认 Flyway 当前版本为 V13（软删除已应用）
+- 确认 Flyway 当前版本为 V12
 
 ### 1.2 Flyway 脚本（自动执行）
 
 | 脚本 | 内容 | 回滚风险 |
 |------|------|----------|
-| V14 | `t_bot` 新增 `primary_channel_id`；`t_bot_channel` 新增 `name`/`webhook_secret_token`/`chat_scope`/`allowed_chat_ids_json`；数据迁移：TG bot 的 token 写入 t_bot_channel | 低（仅 ADD COLUMN + INSERT） |
-| V15 | 新建 `t_channel_allowlist`；从 `t_user_allowlist` 迁移数据 | 低（新表 + 数据复制） |
-| V16 | 新建 `t_command_log` | 低（仅新表） |
+| V13 | `t_bot` 新增 `primary_channel_id`；`t_bot_channel` 新增 `name`/`webhook_secret_token`/`chat_scope`/`allowed_chat_ids_json`；数据迁移：TG bot 的 token 写入 t_bot_channel | 低（仅 ADD COLUMN + INSERT） |
+| V14 | 新建 `t_channel_allowlist`；从 `t_user_allowlist` 迁移数据 | 低（新表 + 数据复制） |
+| V15 | 新建 `t_command_log` | 低（仅新表） |
 
-### 1.3 V14 数据迁移逻辑
+### 1.3 V13 数据迁移逻辑
 
 ```sql
 -- 伪代码：对每个有 telegram_bot_token 的 t_bot
@@ -30,7 +30,7 @@
 -- 4. t_bot 的 telegram_bot_token 等字段保留不删（兼容期）
 ```
 
-### 1.4 V15 数据迁移逻辑
+### 1.4 V14 数据迁移逻辑
 
 ```sql
 -- 从 t_user_allowlist 复制到 t_channel_allowlist
@@ -75,6 +75,6 @@
 1. 备份数据库
 2. 停止 V1 服务
 3. 部署 V2 JAR
-4. 启动 V2（Flyway 自动执行 V14-V16）
+4. 启动 V2（Flyway 自动执行 V13-V15）
 5. 验证：管理端登录 → 检查 Bot/Channel 数据 → 测试查询
 6. 验证各平台 Webhook 可用

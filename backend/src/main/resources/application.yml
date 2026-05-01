@@ -4,7 +4,7 @@ spring:
   profiles:
     active: local
   application:
-    name: telegram-query-bot
+    name: im-bot-hub
   datasource:
     # 未使用 profile 时仍有效；使用 local 时以 application-local.yml 为准覆盖 url/账号
     driver-class-name: com.mysql.cj.jdbc.Driver

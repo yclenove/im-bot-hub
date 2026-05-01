@@ -25,10 +25,10 @@
 | 层级 | V2 新增重点 |
 |------|-------------|
 | 单元测试 | ChannelCredentialResolver、ChannelAllowlistService、CommandLogService |
-| 集成测试 | Flyway V14-V16 迁移验证（Testcontainers）；多平台 Webhook 主流程 |
+| 集成测试 | Flyway V13-V15 迁移验证（Testcontainers）；多平台 Webhook 主流程 |
 | API 测试 | 新旧 API 兼容性；CommandLog API；Channel Allowlist API |
 | 前端验证 | Bot 创建 + Channel 绑定流程；日志页平台筛选 |
-| 数据迁移验证 | V14 token 迁移完整性；V15 白名单迁移完整性 |
+| 数据迁移验证 | V13 token 迁移完整性；V14 白名单迁移完整性 |
 
 ---
 
@@ -37,7 +37,7 @@
 | 变更类型 | 最低测试 | 推荐补充 |
 |----------|----------|----------|
 | 包名重命名 | `mvn test` + `npm run build` | 全量编译 + 启动验证 |
-| Flyway V14-V16 | Testcontainers 空库 + 已有库 | 手动检查数据完整性 |
+| Flyway V13-V15 | Testcontainers 空库 + 已有库 | 手动检查数据完整性 |
 | Bot-Channel 分离 | API CRUD 测试 | 前端端到端流程 |
 | 通用白名单 | 单元测试 + API 测试 | 多平台冒烟 |
 | 通用命令日志 | 单元测试 + API 测试 | 多平台冒烟 |
@@ -69,8 +69,8 @@
 
 | 场景 | 验证方法 |
 |------|----------|
-| V14 TG token 迁入 t_bot_channel | 迁移后 SELECT credentials_json FROM t_bot_channel WHERE platform='TELEGRAM' |
-| V14 primary_channel_id 回填 | 迁移后 SELECT primary_channel_id FROM t_bot WHERE id=X |
-| V15 白名单迁移 | 迁移后对比 t_user_allowlist 与 t_channel_allowlist 记录数 |
-| V16 新建 t_command_log | 迁移后 SHOW CREATE TABLE t_command_log |
+| V13 TG token 迁入 t_bot_channel | 迁移后 SELECT credentials_json FROM t_bot_channel WHERE platform='TELEGRAM' |
+| V13 primary_channel_id 回填 | 迁移后 SELECT primary_channel_id FROM t_bot WHERE id=X |
+| V14 白名单迁移 | 迁移后对比 t_user_allowlist 与 t_channel_allowlist 记录数 |
+| V15 新建 t_command_log | 迁移后 SHOW CREATE TABLE t_command_log |
 | 迁移后旧功能可用 | 管理端 CRUD + Telegram Webhook 冒烟 |

@@ -1,4 +1,4 @@
-# AGENTS.md — telegram-query-bot
+# AGENTS.md — im-bot-hub
 
 > **文档语言策略 / Doc language:** 仓库内**所有用户可读文档**采用 **中文** 或 **中英对照**（同一节内先中文后 English，或表格双列）。代码标识符、Maven 坐标、URL 保持英文原文。
 
@@ -37,9 +37,14 @@
 | 文档 | 用途（中文） | Purpose (EN) |
 |------|----------------|---------------|
 | [`docs/PRD.md`](docs/PRD.md) | 产品定位、范围、目标用户、成功指标 | Product positioning, scope, target users, success metrics |
+| [`docs/PRD-V2.md`](docs/PRD-V2.md) | V2 产品需求：通用 IM 配置中心、Bot-Channel 分离、多平台 | V2 PRD: universal IM config center, Bot-Channel separation |
 | [`docs/REQUIREMENTS-ANALYSIS.md`](docs/REQUIREMENTS-ANALYSIS.md) | 业务问题、需求分解、约束、风险与当前差距 | Business problem, requirement breakdown, constraints, risks, current gaps |
+| [`docs/REQUIREMENTS-ANALYSIS-V2.md`](docs/REQUIREMENTS-ANALYSIS-V2.md) | V2 需求：品牌重塑、数据模型重构、新平台接入 | V2 requirements: rebrand, data model refactor, new platforms |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | 架构、数据流、安全、可扩展、设计变更表 | Architecture, flow, security, extensibility, design log |
+| [`docs/DESIGN-V2.md`](docs/DESIGN-V2.md) | V2 设计：Bot-Channel 分离、通用白名单/日志、包重命名 | V2 design: Bot-Channel separation, generic allowlist/logging |
 | [`docs/TEST-STRATEGY.md`](docs/TEST-STRATEGY.md) | 测试分层、执行门槛、冒烟清单 | Test layers, execution gates, smoke checklist |
+| [`docs/TEST-STRATEGY-V2.md`](docs/TEST-STRATEGY-V2.md) | V2 测试策略：迁移验证、多平台冒烟 | V2 test strategy: migration verification, multi-platform smoke |
+| [`docs/MIGRATION-GUIDE.md`](docs/MIGRATION-GUIDE.md) | V1→V2 迁移指南：数据库、API、前端、配置 | V1→V2 migration guide: DB, API, frontend, config |
 | [`docs/ITERATION-PLAN.md`](docs/ITERATION-PLAN.md) | 近期阶段目标、优先级与交付要求 | Near-term phases, priorities, and delivery requirements |
 | [`docs/CODING-STANDARD.md`](docs/CODING-STANDARD.md) | 中文注释、Java/Vue、SOLID、可读/可扩 | Comments, Java/Vue, SOLID, readability |
 | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) | Changelog 纪律、测试、Code Review、Git | Changelog, tests, review, Git |

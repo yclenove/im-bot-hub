@@ -44,7 +44,7 @@ V1 is Telegram-centric despite supporting other platforms, causing:
 | D-02 | Channel Entity 增强 | P0 | 新增 name / webhook_secret_token / chat_scope / allowed_chat_ids_json |
 | D-03 | 通用白名单表 | P0 | `t_channel_allowlist`：channel_id + platform + external_user_id |
 | D-04 | 通用命令日志表 | P0 | `t_command_log`：替代 t_telegram_query_log，全平台统一 |
-| D-05 | Flyway 数据迁移 | P0 | V14 将 TG bot 的 token 迁入 t_bot_channel |
+| D-05 | Flyway 数据迁移 | P0 | V13 将 TG bot 的 token 迁入 t_bot_channel |
 
 ### 2.3 后端服务重构 / Backend services
 
@@ -107,8 +107,8 @@ V1 is Telegram-centric despite supporting other platforms, causing:
 | 风险 | 影响 | 当前差距 | 缓解 |
 |------|------|----------|------|
 | 包名全量重命名导致编译错误 | 高 | 127 个 Java 文件 + 所有 import | IDE 批量重构 + mvn test 验证 |
-| TG token 从 t_bot 迁移到 t_bot_channel | 高 | 需要数据迁移脚本 + 代码双读兼容期 | V14 迁移脚本先复制再标记 deprecated |
+| TG token 从 t_bot 迁移到 t_bot_channel | 高 | 需要数据迁移脚本 + 代码双读兼容期 | V13 迁移脚本先复制再标记 deprecated |
 | 多平台白名单 user ID 格式差异 | 中 | TG 用 long，飞书用 open_id string，钉钉用 staffId | 统一存 VARCHAR(256) |
 | Slack/Discord 新增 API 需要 OAuth 流程 | 中 | 当前无 OAuth 基础设施 | V2 先支持 Bot Token 方式，OAuth 后续 |
 | 前端改动量大 | 中 | Dashboard.vue 2000+ 行，TG 字段散落多处 | 分阶段：先改 Bot 流程，再加 Channel 页 |
-| 旧 t_user_allowlist 数据迁移 | 低 | 需要映射到 t_channel_allowlist | V15 迁移脚本自动迁移 |
+| 旧 t_user_allowlist 数据迁移 | 低 | 需要映射到 t_channel_allowlist | V14 迁移脚本自动迁移 |

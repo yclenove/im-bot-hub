@@ -44,7 +44,7 @@ async function submit() {
       <div class="login-brand">
         <span class="login-logo" aria-hidden="true">⚡</span>
         <div>
-          <h1 class="login-title">Telegram 查询机器人</h1>
+          <h1 class="login-title">IM Bot Hub</h1>
           <p class="login-sub">管理后台 · 使用服务端 Basic 账号登录</p>
         </div>
       </div>

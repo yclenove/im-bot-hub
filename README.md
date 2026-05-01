@@ -1,10 +1,10 @@
-# telegram-query-bot
+# im-bot-hub
 
 ## 简介（中文）
 
-可配置 Telegram 机器人：将命令（例如 `/cx`）映射到针对 **只读** MySQL 数据源的 **参数化 SQL**，或映射到第三方 **API** 接口，并通过 **REST + 管理端 Web** 维护机器人、数据源、查询配置与返回字段映射。
+通用 IM 查询机器人配置中心：将命令（例如 `/cx`）映射到针对 **只读** MySQL 数据源的 **参数化 SQL**，或映射到第三方 **API** 接口，支持 Telegram / 飞书 / 钉钉 / 企业微信 / Slack / Discord 等多平台统一接入，并通过 **REST + 管理端 Web** 维护机器人、渠道、数据源、查询配置与返回字段映射。
 
-**English:** A configurable Telegram bot gateway that maps commands (e.g. `/cx`) either to **parameterized** SQL on **read-only** MySQL sources or to external **API** calls, with bots, datasources, queries, and field mappings managed via **REST + admin UI**.
+**English:** Universal IM query bot configuration center that maps commands (e.g. `/cx`) to **parameterized** SQL on **read-only** MySQL sources or external **API** calls, with multi-platform support (Telegram / Lark / DingTalk / WeWork / Slack / Discord), managed via **REST + admin UI**.
 
 ---
 
@@ -77,7 +77,7 @@
 | 后端（本机） | `cd backend`，Windows 推荐 **`.\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=local"`**（与 CI 一致，不依赖全局 `mvn`）；默认 HTTP 端口 **`18089`**（见 `application.yml`）。 |
 | 管理端（开发） | `cd admin-ui && npm install && npm run dev` → 浏览器 **`http://localhost:5173/login`**；Vite 将 `/api` 代理到上述后端。 |
 | 管理端（生产静态资源） | `cd admin-ui && npm run build` → 产物目录 **`admin-ui/dist/`**，由 Nginx 等托管并反代 `/api` 到后端。 |
-| 后端（生产 JAR） | `cd backend && .\mvnw.cmd clean package`（发布前建议去掉 `clean` 或保留均可；需全量测试时不要加 `-DskipTests`）→ **`backend/target/telegram-query-bot-<version>.jar`**（版本以 `pom.xml` 为准；CI 部署阶段会统一重命名为 `telegram-query-bot.jar`）。 |
+| 后端（生产 JAR） | `cd backend && .\mvnw.cmd clean package`（发布前建议去掉 `clean` 或保留均可；需全量测试时不要加 `-DskipTests`）→ **`backend/target/im-bot-hub-<version>.jar`**（版本以 `pom.xml` 为准；CI 部署阶段会统一重命名为 `im-bot-hub.jar`）。 |
 
 可选：若本机访问 Telegram API 需代理，可在启动前设置 `JAVA_TOOL_OPTIONS`（如 SOCKS）**仅用于** Telegram 相关客户端时，请仍遵循仓库内 `AppConfig` 对「Telegram 代理 vs 普通 HTTP 出站」的拆分，避免把业务 JDBC 或第三方 API 误走代理。
 
@@ -88,7 +88,7 @@
 | Backend (local) | `cd backend` then **`./mvnw spring-boot:run -Dspring-boot.run.profiles=local`** (Unix) or **`.\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=local"`** (Windows); default port **`18089`**. |
 | Admin UI (dev) | `cd admin-ui && npm install && npm run dev` → **`http://localhost:5173`**. |
 | Admin UI (prod static) | `cd admin-ui && npm run build` → **`admin-ui/dist/`**. |
-| Backend (prod JAR) | `cd backend && ./mvnw clean package` → **`backend/target/telegram-query-bot-<version>.jar`** (renamed to `telegram-query-bot.jar` in CI deploy stage). |
+| Backend (prod JAR) | `cd backend && ./mvnw clean package` → **`backend/target/im-bot-hub-<version>.jar`** (renamed to `im-bot-hub.jar` in CI deploy stage). |
 
 ---
 

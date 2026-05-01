@@ -12,10 +12,10 @@
     </parent>
 
     <groupId>com.sov</groupId>
-    <artifactId>telegram-query-bot</artifactId>
+    <artifactId>im-bot-hub</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>telegram-query-bot</name>
-    <description>Telegram configurable query bot</description>
+    <name>im-bot-hub</name>
+    <description>Universal IM query bot configuration center</description>
 
     <properties>
         <!-- 与 Spring Boot 自带的 9.x 相比：Flyway 9 CE 对 MySQL 5.7 会要求 Teams；10 CE 恢复在 5.7 上可用。 -->

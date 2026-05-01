@@ -26,11 +26,17 @@ function logout() {
 type Bot = {
   id: number
   name: string
-  telegramBotTokenMasked: string
-  telegramBotUsername: string | null
-  webhookSecretTokenMasked: string
+  primaryChannelId?: number | null
   enabled: boolean
+  /** @deprecated Use Channel-based credential management instead. */
+  telegramBotTokenMasked?: string
+  /** @deprecated Use Channel-based credential management instead. */
+  telegramBotUsername?: string | null
+  /** @deprecated Use Channel-based webhook secret instead. */
+  webhookSecretTokenMasked?: string
+  /** @deprecated Use Channel-based chat scope instead. */
   telegramChatScope?: string
+  /** @deprecated Use Channel-based allowed chat IDs instead. */
   telegramAllowedChatIds?: number[]
 }
 type Ds = {
@@ -276,6 +282,7 @@ const WEBHOOK_BASE_STORAGE_KEY = 'tg_admin_webhook_public_base'
 
 const botDlgOpen = ref(false)
 const botEditId = ref<number | null>(null)
+const tgConfigCollapse = ref<string[]>([])
 const webhookRegDlgOpen = ref(false)
 const webhookRegBot = ref<Bot | null>(null)
 const webhookPublicBase = ref('')
@@ -1187,7 +1194,7 @@ async function loadTgLogs() {
     total: number
     page: number
     size: number
-  }>('/admin/telegram-query-logs', {
+  }>('/admin/command-logs', {
     params: {
       page: tgLogPage.value,
       size: tgLogSize.value,
@@ -1202,8 +1209,8 @@ async function loadTgLogs() {
           : tgLogSuccess.value === 'yes'
             ? true
             : false,
-      telegramUserId: parseOptionalLongId(tgLogTelegramUserId.value),
-      chatId: parseOptionalLongId(tgLogChatId.value),
+      externalUserId: tgLogTelegramUserId.value?.trim() || undefined,
+      externalChatId: tgLogChatId.value?.trim() || undefined,
     },
   })
   tgLogs.value = data.records
@@ -2166,10 +2173,10 @@ onBeforeUnmount(() => {
   <el-container class="admin-shell">
     <el-header class="admin-header">
       <div class="admin-header-title">
-        <span class="admin-badge" aria-hidden="true">TG</span>
+        <span class="admin-badge" aria-hidden="true">IM</span>
         <div>
-          <div class="admin-product">Telegram 查询机器人</div>
-          <div class="admin-tagline">数据源（库 / API）、查询（SQL·向导·API）、Webhook 与日志</div>
+          <div class="admin-product">IM Bot Hub</div>
+          <div class="admin-tagline">数据源（库 / API）、查询（SQL·向导·API）、多平台渠道与日志</div>
         </div>
       </div>
       <div class="admin-header-actions">
@@ -2225,9 +2232,7 @@ onBeforeUnmount(() => {
           <el-table :data="bots" style="width: 100%; margin-top: 12px">
             <el-table-column prop="id" label="ID" width="80" />
             <el-table-column prop="name" label="名称" />
-            <el-table-column prop="telegramBotUsername" label="用户名" />
-            <el-table-column prop="telegramBotTokenMasked" label="Token（脱敏）" />
-            <el-table-column prop="webhookSecretTokenMasked" label="Webhook 密钥（脱敏）" min-width="140" />
+            <el-table-column prop="primaryChannelId" label="主渠道 ID" width="100" />
             <el-table-column prop="enabled" label="启用" width="80" />
             <el-table-column label="操作" width="248" fixed="right" align="right">
               <template #default="scope">
@@ -2379,7 +2384,7 @@ onBeforeUnmount(() => {
           <p style="color: #666">若白名单为空，则所有用户都可使用查询命令。</p>
         </el-tab-pane>
 
-        <el-tab-pane label="Telegram 查询日志" name="tglog">
+        <el-tab-pane label="命令日志" name="tglog">
           <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px">
             <el-select v-model="tgLogBotId" placeholder="全部机器人" clearable style="width: 220px">
               <el-option v-for="b in bots" :key="b.id" :label="`${b.id} - ${b.name}`" :value="b.id" />
@@ -2482,46 +2487,51 @@ onBeforeUnmount(() => {
   <el-dialog v-model="botDlgOpen" :title="botEditId != null ? '编辑机器人' : '新建机器人'">
     <el-form label-width="120px">
       <el-form-item label="名称"><el-input v-model="botForm.name" /></el-form-item>
-      <el-form-item label="Bot Token">
-        <el-input v-model="botForm.telegramBotToken" type="password" show-password autocomplete="off" />
-        <span v-if="botEditId != null" style="color: #999; font-size: 12px; display: block; margin-top: 4px">
-          留空则不修改 Token
-        </span>
-      </el-form-item>
-      <el-form-item label="用户名">
-        <el-input
-          v-model="botForm.telegramBotUsername"
-          placeholder="选填：机器人 @用户名，只填英文 ID，不要 @"
-        />
-        <span class="form-hint">在 Telegram 里打开你的机器人资料，用户名形如 <code>@xxx_bot</code>，这里只填 <code>xxx_bot</code>。不知道可留空，不影响 Token 与 Webhook。</span>
-      </el-form-item>
-      <el-form-item label="Webhook 密钥">
-        <el-input v-model="botForm.webhookSecretToken" type="password" show-password autocomplete="off" />
-        <el-checkbox v-if="botEditId != null" v-model="clearWebhookSecret" style="margin-top: 8px">
-          清除已保存的 Webhook 密钥
-        </el-checkbox>
-        <span class="form-hint">
-          <strong>可选。</strong>只有在你调用 Telegram 的 <code>setWebhook</code> 时填写了 <code>secret_token</code> 时才需要填这里，且必须与那边<strong>完全一致</strong>。Telegram 推送消息时会带请求头
-          <code>X-Telegram-Bot-Api-Secret-Token</code>，本系统用来校验。若你从未设置过 Secret，留空即可。编辑时留空表示不修改；勾选上方可清除。
-        </span>
-      </el-form-item>
       <el-form-item label="启用"><el-switch v-model="botForm.enabled" /></el-form-item>
-      <el-form-item label="接收范围">
-        <el-radio-group v-model="botForm.telegramChatScope">
-          <el-radio-button value="ALL">全部（私聊 + 任意群）</el-radio-button>
-          <el-radio-button value="GROUPS_ONLY">仅下方 chat_id 群（私聊忽略）</el-radio-button>
-        </el-radio-group>
-        <span class="form-hint">选「仅指定群」时，只有列表内的 Telegram 群/超级群会执行查询；私聊与未列出群<strong>静默忽略</strong>（不回复）。</span>
-      </el-form-item>
-      <el-form-item v-if="botForm.telegramChatScope === 'GROUPS_ONLY'" label="允许的群 ID">
-        <el-input
-          v-model="botForm.telegramAllowedChatIdsText"
-          type="textarea"
-          :rows="4"
-          placeholder="每行一个 chat_id，如 -1001234567890（可与机器人同群先发一条，用 getWebhook 日志或第三方机器人查 id）"
-        />
-        <span class="form-hint">超级群 id 一般为 <code>-100</code> 开头的负数；须与管理员在后台保存的<strong>完全一致</strong>。</span>
-      </el-form-item>
+
+      <el-collapse v-model="tgConfigCollapse">
+        <el-collapse-item title="Telegram 配置（旧版 · 请使用渠道管理）" name="tg">
+          <el-form-item label="Bot Token">
+            <el-input v-model="botForm.telegramBotToken" type="password" show-password autocomplete="off" />
+            <span v-if="botEditId != null" style="color: #999; font-size: 12px; display: block; margin-top: 4px">
+              留空则不修改 Token
+            </span>
+          </el-form-item>
+          <el-form-item label="用户名">
+            <el-input
+              v-model="botForm.telegramBotUsername"
+              placeholder="选填：机器人 @用户名，只填英文 ID，不要 @"
+            />
+            <span class="form-hint">在 Telegram 里打开你的机器人资料，用户名形如 <code>@xxx_bot</code>，这里只填 <code>xxx_bot</code>。不知道可留空，不影响 Token 与 Webhook。</span>
+          </el-form-item>
+          <el-form-item label="Webhook 密钥">
+            <el-input v-model="botForm.webhookSecretToken" type="password" show-password autocomplete="off" />
+            <el-checkbox v-if="botEditId != null" v-model="clearWebhookSecret" style="margin-top: 8px">
+              清除已保存的 Webhook 密钥
+            </el-checkbox>
+            <span class="form-hint">
+              <strong>可选。</strong>只有在你调用 Telegram 的 <code>setWebhook</code> 时填写了 <code>secret_token</code> 时才需要填这里，且必须与那边<strong>完全一致</strong>。Telegram 推送消息时会带请求头
+              <code>X-Telegram-Bot-Api-Secret-Token</code>，本系统用来校验。若你从未设置过 Secret，留空即可。编辑时留空表示不修改；勾选上方可清除。
+            </span>
+          </el-form-item>
+          <el-form-item label="接收范围">
+            <el-radio-group v-model="botForm.telegramChatScope">
+              <el-radio-button value="ALL">全部（私聊 + 任意群）</el-radio-button>
+              <el-radio-button value="GROUPS_ONLY">仅下方 chat_id 群（私聊忽略）</el-radio-button>
+            </el-radio-group>
+            <span class="form-hint">选「仅指定群」时，只有列表内的 Telegram 群/超级群会执行查询；私聊与未列出群<strong>静默忽略</strong>（不回复）。</span>
+          </el-form-item>
+          <el-form-item v-if="botForm.telegramChatScope === 'GROUPS_ONLY'" label="允许的群 ID">
+            <el-input
+              v-model="botForm.telegramAllowedChatIdsText"
+              type="textarea"
+              :rows="4"
+              placeholder="每行一个 chat_id，如 -1001234567890（可与机器人同群先发一条，用 getWebhook 日志或第三方机器人查 id）"
+            />
+            <span class="form-hint">超级群 id 一般为 <code>-100</code> 开头的负数；须与管理员在后台保存的<strong>完全一致</strong>。</span>
+          </el-form-item>
+        </el-collapse-item>
+      </el-collapse>
       <template v-if="botEditId != null">
         <el-divider content-position="left">IM 渠道（飞书 / 钉钉 / 企业微信）</el-divider>
         <p class="form-hint">
