@@ -135,6 +135,7 @@
 - **统一字段渲染**：无论来源是数据库还是 API，最终都走统一的字段映射、格式化、脱敏和 Telegram 展现风格。
 - **主流程降噪**：API 查询管理界面默认把高级请求项与结果细项折叠起来，优先突出“选模板、填路径、预览、点选字段、保存”的最短路径。
 - **线上排查日志**：Webhook、命令编排、API 执行链路已补充结构化日志，默认可按 `traceId / updateId / queryId / command` 串联排查。
+- **配置软删除**：机器人、数据源、查询定义、渠道配置已切换为软删除，默认从管理端和运行时查询中过滤，避免误删后直接丢失配置，同时允许命令名安全复用。
 
 ### English
 
@@ -145,6 +146,7 @@
 - **Unified rendering**: both SQL and API results flow through the same field mapping, formatting, masking, and Telegram reply styles.
 - **Reduced-noise main flow**: advanced request options and result/runtime details are folded by default so the shortest path stays focused on preset, path, preview, field selection, and save.
 - **Operational tracing logs**: structured logs now correlate Webhook, dispatch, and API execution with `traceId / updateId / queryId / command` for production troubleshooting.
+- **Soft-deleted config entities**: bots, datasources, query definitions, and channel configs are now hidden by soft delete instead of being physically removed immediately, reducing accidental loss while still allowing safe command reuse.
 
 ---
 

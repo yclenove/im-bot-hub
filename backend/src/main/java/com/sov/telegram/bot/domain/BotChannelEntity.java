@@ -1,6 +1,7 @@
 package com.sov.telegram.bot.domain;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -17,7 +18,10 @@ public class BotChannelEntity {
     /** LARK | WEWORK | DINGTALK */
     private String platform;
     private Boolean enabled;
+    @TableLogic
+    private Integer deleted;
     /** JSON credentials per platform */
     private String credentialsJson;
     private LocalDateTime createdAt;
+    private LocalDateTime deletedAt;
 }

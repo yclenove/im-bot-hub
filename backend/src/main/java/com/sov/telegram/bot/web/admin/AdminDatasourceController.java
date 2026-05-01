@@ -1,12 +1,15 @@
 package com.sov.telegram.bot.web.admin;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sov.telegram.bot.admin.dto.DatasourceCreateRequest;
 import com.sov.telegram.bot.admin.dto.DatasourceUpdateRequest;
 import com.sov.telegram.bot.admin.dto.DatasourceResponse;
 import com.sov.telegram.bot.domain.DatasourceEntity;
 import com.sov.telegram.bot.domain.DatasourceType;
+import com.sov.telegram.bot.domain.QueryDefinitionEntity;
 import com.sov.telegram.bot.mapstruct.AdminDtoMapper;
 import com.sov.telegram.bot.mapper.DatasourceMapper;
+import com.sov.telegram.bot.mapper.QueryDefinitionMapper;
 import com.sov.telegram.bot.service.AuditLogService;
 import com.sov.telegram.bot.service.api.ApiDatasourceSupport;
 import com.sov.telegram.bot.service.crypto.EncryptionService;
@@ -14,8 +17,10 @@ import com.sov.telegram.bot.service.jdbc.BusinessDataSourceRegistry;
 import com.sov.telegram.bot.web.NotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -30,10 +35,11 @@ public class AdminDatasourceController {
     private final BusinessDataSourceRegistry businessDataSourceRegistry;
     private final AuditLogService auditLogService;
     private final ApiDatasourceSupport apiDatasourceSupport;
+    private final QueryDefinitionMapper queryDefinitionMapper;
 
     @GetMapping
     public List<DatasourceResponse> list() {
-        return datasourceMapper.selectList(null).stream()
+        return datasourceMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<DatasourceEntity>().orderByDesc(DatasourceEntity::getId)).stream()
                 .map(adminDtoMapper::toDatasourceResponse)
                 .collect(Collectors.toList());
     }
@@ -80,10 +86,28 @@ public class AdminDatasourceController {
     }
 
     @DeleteMapping("/{id}")
+    @Transactional
     public void delete(@PathVariable Long id) {
-        datasourceMapper.deleteById(id);
+        DatasourceEntity e = datasourceMapper.selectById(id);
+        if (e == null) {
+            throw new NotFoundException("datasource not found");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        List<QueryDefinitionEntity> queries = queryDefinitionMapper.selectList(
+                new LambdaQueryWrapper<QueryDefinitionEntity>().eq(QueryDefinitionEntity::getDatasourceId, id));
+        for (QueryDefinitionEntity q : queries) {
+            q.setDeletedAt(now);
+            q.setDeleteToken(q.getId());
+            q.setDeleted(1);
+            queryDefinitionMapper.update(
+                    q,
+                    new LambdaQueryWrapper<QueryDefinitionEntity>().eq(QueryDefinitionEntity::getId, q.getId()));
+        }
+        e.setDeletedAt(now);
+        e.setDeleted(1);
+        datasourceMapper.updateById(e);
         businessDataSourceRegistry.reloadOne(id);
-        auditLogService.log("DELETE", "DATASOURCE", String.valueOf(id), null);
+        auditLogService.log("DELETE", "DATASOURCE", String.valueOf(id), e.getName());
     }
 
     private void applyRequest(DatasourceEntity e, DatasourceCreateRequest req) {

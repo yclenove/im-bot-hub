@@ -22,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -44,7 +45,9 @@ public class AdminBotChannelController {
     public List<BotChannelResponse> list(@PathVariable long botId) {
         ensureBot(botId);
         return botChannelMapper
-                .selectList(new LambdaQueryWrapper<BotChannelEntity>().eq(BotChannelEntity::getBotId, botId))
+                .selectList(new LambdaQueryWrapper<BotChannelEntity>()
+                        .eq(BotChannelEntity::getBotId, botId)
+                        .orderByDesc(BotChannelEntity::getId))
                 .stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
@@ -113,7 +116,9 @@ public class AdminBotChannelController {
         if (e == null || !Objects.equals(botId, e.getBotId())) {
             throw new NotFoundException("channel not found");
         }
-        botChannelMapper.deleteById(channelId);
+        e.setDeletedAt(LocalDateTime.now());
+        e.setDeleted(1);
+        botChannelMapper.updateById(e);
         auditLogService.log("DELETE", "BOT_CHANNEL", String.valueOf(channelId), e.getPlatform());
     }
 

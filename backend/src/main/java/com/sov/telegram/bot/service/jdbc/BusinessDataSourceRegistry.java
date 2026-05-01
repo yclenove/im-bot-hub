@@ -6,6 +6,7 @@ import com.sov.telegram.bot.mapper.DatasourceMapper;
 import com.sov.telegram.bot.service.crypto.EncryptionService;
 import com.zaxxer.hikari.HikariDataSource;
 import jakarta.annotation.PostConstruct;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -37,7 +38,7 @@ public class BusinessDataSourceRegistry {
         namedTemplates.clear();
         pools.values().forEach(HikariDataSource::close);
         pools.clear();
-        List<DatasourceEntity> list = datasourceMapper.selectList(null);
+        List<DatasourceEntity> list = datasourceMapper.selectList(new LambdaQueryWrapper<DatasourceEntity>());
         for (DatasourceEntity e : list) {
             if (DatasourceType.fromString(e.getSourceType()) != DatasourceType.DATABASE) {
                 continue;

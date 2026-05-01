@@ -1,11 +1,14 @@
 package com.sov.telegram.bot.web.admin;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.sov.telegram.bot.admin.dto.DatasourceCreateRequest;
 import com.sov.telegram.bot.admin.dto.DatasourceResponse;
 import com.sov.telegram.bot.admin.dto.DatasourceUpdateRequest;
 import com.sov.telegram.bot.domain.DatasourceEntity;
+import com.sov.telegram.bot.domain.QueryDefinitionEntity;
 import com.sov.telegram.bot.mapstruct.AdminDtoMapper;
 import com.sov.telegram.bot.mapper.DatasourceMapper;
+import com.sov.telegram.bot.mapper.QueryDefinitionMapper;
 import com.sov.telegram.bot.service.AuditLogService;
 import com.sov.telegram.bot.service.api.ApiDatasourceSupport;
 import com.sov.telegram.bot.service.crypto.EncryptionService;
@@ -14,11 +17,14 @@ import com.sov.telegram.bot.web.NotFoundException;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.time.LocalDateTime;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -34,6 +40,7 @@ class AdminDatasourceControllerTest {
     private final BusinessDataSourceRegistry businessDataSourceRegistry = mock(BusinessDataSourceRegistry.class);
     private final AuditLogService auditLogService = mock(AuditLogService.class);
     private final ApiDatasourceSupport apiDatasourceSupport = mock(ApiDatasourceSupport.class);
+    private final QueryDefinitionMapper queryDefinitionMapper = mock(QueryDefinitionMapper.class);
 
     private final AdminDatasourceController controller = new AdminDatasourceController(
             datasourceMapper,
@@ -41,7 +48,8 @@ class AdminDatasourceControllerTest {
             encryptionService,
             businessDataSourceRegistry,
             auditLogService,
-            apiDatasourceSupport
+            apiDatasourceSupport,
+            queryDefinitionMapper
     );
 
     @Test
@@ -124,5 +132,51 @@ class AdminDatasourceControllerTest {
         NotFoundException ex = assertThrows(NotFoundException.class, () -> controller.update(99L, new DatasourceUpdateRequest()));
 
         assertEquals("datasource not found", ex.getMessage());
+    }
+
+    @Test
+    void delete_softDeletesDatasourceAndRelatedQueries() {
+        DatasourceEntity datasource = new DatasourceEntity();
+        datasource.setId(9L);
+        datasource.setName("法币挂单价");
+        when(datasourceMapper.selectById(9L)).thenReturn(datasource);
+
+        QueryDefinitionEntity query = new QueryDefinitionEntity();
+        query.setId(17L);
+        query.setDatasourceId(9L);
+        when(queryDefinitionMapper.selectList(any(Wrapper.class))).thenReturn(java.util.List.of(query));
+
+        controller.delete(9L);
+
+        verify(queryDefinitionMapper).selectList(any(Wrapper.class));
+        ArgumentCaptor<QueryDefinitionEntity> queryCaptor = ArgumentCaptor.forClass(QueryDefinitionEntity.class);
+        verify(queryDefinitionMapper).update(eq(query), any(Wrapper.class));
+        assertEquals(17L, query.getDeleteToken());
+        assertEquals(1, query.getDeleted());
+        assertDeletedAtSet(query.getDeletedAt());
+
+        ArgumentCaptor<DatasourceEntity> datasourceCaptor = ArgumentCaptor.forClass(DatasourceEntity.class);
+        verify(datasourceMapper).updateById(datasourceCaptor.capture());
+        assertEquals(1, datasourceCaptor.getValue().getDeleted());
+        assertDeletedAtSet(datasourceCaptor.getValue().getDeletedAt());
+        verify(datasourceMapper, never()).deleteById(anyLong());
+        verify(businessDataSourceRegistry).reloadOne(9L);
+        verify(auditLogService).log("DELETE", "DATASOURCE", "9", "法币挂单价");
+    }
+
+    @Test
+    void delete_missingDatasource_throwsNotFound() {
+        when(datasourceMapper.selectById(77L)).thenReturn(null);
+
+        NotFoundException ex = assertThrows(NotFoundException.class, () -> controller.delete(77L));
+
+        assertEquals("datasource not found", ex.getMessage());
+        verify(queryDefinitionMapper, never()).selectList(any(Wrapper.class));
+        verify(queryDefinitionMapper, never()).update(any(), any(Wrapper.class));
+        verify(datasourceMapper, never()).updateById(any());
+    }
+
+    private static void assertDeletedAtSet(LocalDateTime deletedAt) {
+        org.junit.jupiter.api.Assertions.assertNotNull(deletedAt);
     }
 }

@@ -1,6 +1,7 @@
 package com.sov.telegram.bot.domain;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -27,5 +28,8 @@ public class DatasourceEntity {
     private String username;
     private String passwordCipher;
     private Integer poolMax;
+    @TableLogic
+    private Integer deleted;
     private LocalDateTime createdAt;
+    private LocalDateTime deletedAt;
 }

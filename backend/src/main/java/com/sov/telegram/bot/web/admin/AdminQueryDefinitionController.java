@@ -25,6 +25,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -64,7 +65,9 @@ public class AdminQueryDefinitionController {
     @GetMapping
     public List<QueryDefinitionResponse> list(@PathVariable Long botId) {
         return queryDefinitionMapper
-                .selectList(new LambdaQueryWrapper<QueryDefinitionEntity>().eq(QueryDefinitionEntity::getBotId, botId))
+                .selectList(new LambdaQueryWrapper<QueryDefinitionEntity>()
+                        .eq(QueryDefinitionEntity::getBotId, botId)
+                        .orderByDesc(QueryDefinitionEntity::getId))
                 .stream()
                 .map(adminDtoMapper::toQueryResponse)
                 .collect(Collectors.toList());
@@ -158,9 +161,13 @@ public class AdminQueryDefinitionController {
         if (e == null) {
             throw new NotFoundException("query not found");
         }
-        queryDefinitionMapper.deleteById(queryId);
+        LocalDateTime now = LocalDateTime.now();
+        e.setDeletedAt(now);
+        e.setDeleteToken(queryId);
+        e.setDeleted(1);
+        queryDefinitionMapper.updateById(e);
         syncTelegramMenuCommands(botId);
-        auditLogService.log("DELETE", "QUERY", String.valueOf(queryId), null);
+        auditLogService.log("DELETE", "QUERY", String.valueOf(queryId), e.getCommand());
     }
 
     /**
@@ -189,7 +196,8 @@ public class AdminQueryDefinitionController {
         LambdaQueryWrapper<QueryDefinitionEntity> w =
                 new LambdaQueryWrapper<QueryDefinitionEntity>()
                         .eq(QueryDefinitionEntity::getBotId, botId)
-                        .eq(QueryDefinitionEntity::getCommand, command);
+                        .eq(QueryDefinitionEntity::getCommand, command)
+                        .eq(QueryDefinitionEntity::getDeleteToken, 0L);
         if (excludeQueryId != null) {
             w.ne(QueryDefinitionEntity::getId, excludeQueryId);
         }

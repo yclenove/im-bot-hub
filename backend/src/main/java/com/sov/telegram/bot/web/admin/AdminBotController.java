@@ -1,18 +1,25 @@
 package com.sov.telegram.bot.web.admin;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sov.telegram.bot.admin.dto.BotCreateRequest;
 import com.sov.telegram.bot.admin.dto.BotResponse;
 import com.sov.telegram.bot.admin.dto.BotUpdateRequest;
 import com.sov.telegram.bot.domain.Bot;
+import com.sov.telegram.bot.domain.BotChannelEntity;
+import com.sov.telegram.bot.domain.QueryDefinitionEntity;
 import com.sov.telegram.bot.mapstruct.AdminDtoMapper;
+import com.sov.telegram.bot.mapper.BotChannelMapper;
 import com.sov.telegram.bot.mapper.BotMapper;
+import com.sov.telegram.bot.mapper.QueryDefinitionMapper;
 import com.sov.telegram.bot.service.AuditLogService;
 import com.sov.telegram.bot.util.TelegramChatIdsJson;
 import com.sov.telegram.bot.web.NotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -22,12 +29,16 @@ import java.util.stream.Collectors;
 public class AdminBotController {
 
     private final BotMapper botMapper;
+    private final QueryDefinitionMapper queryDefinitionMapper;
+    private final BotChannelMapper botChannelMapper;
     private final AdminDtoMapper adminDtoMapper;
     private final AuditLogService auditLogService;
 
     @GetMapping
     public List<BotResponse> list() {
-        return botMapper.selectList(null).stream().map(adminDtoMapper::toBotResponse).collect(Collectors.toList());
+        return botMapper.selectList(new LambdaQueryWrapper<Bot>().orderByDesc(Bot::getId)).stream()
+                .map(adminDtoMapper::toBotResponse)
+                .collect(Collectors.toList());
     }
 
     @GetMapping("/{id}")
@@ -95,9 +106,36 @@ public class AdminBotController {
     }
 
     @DeleteMapping("/{id}")
+    @Transactional
     public void delete(@PathVariable Long id) {
-        botMapper.deleteById(id);
-        auditLogService.log("DELETE", "BOT", String.valueOf(id), null);
+        Bot b = botMapper.selectById(id);
+        if (b == null) {
+            throw new NotFoundException("bot not found");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        queryDefinitionMapper.selectList(new LambdaQueryWrapper<QueryDefinitionEntity>().eq(QueryDefinitionEntity::getBotId, id))
+                .forEach(q -> {
+                    q.setDeletedAt(now);
+                    q.setDeleteToken(q.getId());
+                    q.setDeleted(1);
+                    queryDefinitionMapper.update(
+                            q,
+                            new LambdaQueryWrapper<QueryDefinitionEntity>().eq(QueryDefinitionEntity::getId, q.getId())
+                    );
+                });
+        botChannelMapper.selectList(new LambdaQueryWrapper<BotChannelEntity>().eq(BotChannelEntity::getBotId, id))
+                .forEach(channel -> {
+                    channel.setDeletedAt(now);
+                    channel.setDeleted(1);
+                    botChannelMapper.update(
+                            channel,
+                            new LambdaQueryWrapper<BotChannelEntity>().eq(BotChannelEntity::getId, channel.getId())
+                    );
+                });
+        b.setDeletedAt(now);
+        b.setDeleted(1);
+        botMapper.updateById(b);
+        auditLogService.log("DELETE", "BOT", String.valueOf(id), b.getName());
     }
 
     private static void applyChatScope(Bot b, String rawScope, List<Long> allowedIds) {

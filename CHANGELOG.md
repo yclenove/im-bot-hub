@@ -10,6 +10,8 @@
 
 ### 变更 Changed
 
+- **配置实体软删除**：`bot`、`datasource`、`query_definition`、`bot_channel` 已切换为逻辑删除方案；删除时默认只隐藏配置并保留可追溯关系，运行时与管理端默认过滤已删除记录，`query_definition` 通过 `delete_token` 释放 `(bot_id, command)` 唯一约束以支持命令复用。 / `bot`, `datasource`, `query_definition`, and `bot_channel` now use soft delete; runtime/admin queries filter deleted rows by default, and `query_definition` uses `delete_token` to release `(bot_id, command)` uniqueness for command reuse.
+
 - **Telegram `setMyCommands`**：在默认范围之外，再对 **`all_group_chats`** 写入相同命令列表，改善群内输入 `/` 时的命令联想（仍受 Telegram 客户端差异影响）。 / Also call `setMyCommands` with `scope=all_group_chats` for group slash hints.
 
 - **文档与管理端文案**：`UserGuide`、工作台折叠引导、`TELEGRAM-傻瓜配置`、`AGENTS` 本地运行说明、`DESIGN` 变更表与当前 **数据库/API 数据源 + SQL/向导/API 查询**、命令菜单及查询日志能力对齐。 / Refreshed UserGuide, Dashboard onboarding, Telegram doc, AGENTS local run notes, and DESIGN log for dual datasources, tri-mode queries, menu behavior, and TG logs.

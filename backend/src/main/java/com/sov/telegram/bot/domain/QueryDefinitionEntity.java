@@ -1,6 +1,7 @@
 package com.sov.telegram.bot.domain;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -31,8 +32,12 @@ public class QueryDefinitionEntity {
     private Integer timeoutMs;
     private Integer maxRows;
     private Boolean enabled;
+    @TableLogic
+    private Integer deleted;
+    private Long deleteToken;
     /** LIST | LIST_DOT | LIST_CODE | LIST_BLOCKQUOTE | SECTION | MONO_PRE | CODE_BLOCK | KV_SINGLE_LINE — 见 FieldRenderService */
     private String telegramReplyStyle;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private LocalDateTime deletedAt;
 }
