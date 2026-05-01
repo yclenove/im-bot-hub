@@ -18,7 +18,7 @@
   - application.yml: `spring.application.name: im-bot-hub`
   - admin-ui 标题更新
   - `mvn test` + `npm run build` 验证
-- [ ] 阶段 1：数据层重构（Flyway V13-V15）
+- [ ] 阶段 1：数据层重构（Flyway V14-V16，V13 已用于软删除）
 - [ ] 阶段 2：Service 层重构
 - [ ] 阶段 3：API/DTO 层重构
 - [ ] 阶段 4：前端重构
@@ -40,7 +40,7 @@
 
 - 提交信息使用**中文**
 - 改 backend 须 `mvn test`，改 frontend 须 `npm run build`
-- Flyway 脚本不可逆（V13-V15 需要先备份数据库）
+- Flyway 脚本不可逆（V14-V16 需要先备份数据库；V13 已用于软删除）
 - 旧 API 保留兼容期（至少一个版本周期）
 - 安全红线：日志禁泄 token/密码，SQL 参数化绑定
 
