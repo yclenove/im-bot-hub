@@ -1,0 +1,4 @@
+ALTER TABLE t_datasource
+    MODIFY COLUMN jdbc_url VARCHAR(1024) NULL,
+    MODIFY COLUMN username VARCHAR(256) NULL,
+    MODIFY COLUMN password_cipher VARCHAR(512) NULL;

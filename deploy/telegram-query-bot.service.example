@@ -1,0 +1,18 @@
+[Unit]
+Description=telegram-query-bot (Spring Boot)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/telegram-query-bot
+ExecStart=/usr/bin/java -Xms256m -Xmx512m -jar /opt/telegram-query-bot/telegram-query-bot.jar --spring.profiles.active=prod --spring.config.additional-location=file:/opt/telegram-query-bot/config/
+Restart=on-failure
+RestartSec=10
+
+# 可选：用环境变量注入敏感项（二选一：环境变量或 additional-location 目录下的 application-prod.yml）
+# Environment=SPRING_DATASOURCE_PASSWORD=...
+# Environment=SPRING_PROFILES_ACTIVE=prod
+
+[Install]
+WantedBy=multi-user.target

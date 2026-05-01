@@ -1,0 +1,27 @@
+/* 管理后台：全宽布局 + 与 Element Plus dark 协调 */
+html.dark {
+  --admin-bg: #0b0d11;
+  --admin-surface: #12151c;
+  --admin-elevated: #181c26;
+  --admin-muted: #8b92a5;
+  --admin-accent: #7c3aed;
+  --admin-accent-soft: rgba(124, 58, 237, 0.2);
+  --admin-header-border: rgba(255, 255, 255, 0.06);
+}
+
+#app {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  text-align: left;
+  border: none;
+  min-height: 100svh;
+  box-sizing: border-box;
+  display: block;
+}
+
+/* 覆盖模板遗留的居中窄栏，避免管理页显得「挤」 */
+#app:has(.admin-shell),
+#app:has(.login-page) {
+  display: block;
+}

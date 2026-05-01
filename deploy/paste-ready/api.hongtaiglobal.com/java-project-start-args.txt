@@ -1,0 +1,1 @@
+--spring.profiles.active=prod --spring.config.additional-location=file:/www/wwwroot/telegram-query-bot/config/

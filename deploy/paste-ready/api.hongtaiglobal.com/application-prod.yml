@@ -1,0 +1,28 @@
+# 粘贴到服务器：config/application-prod.yml
+# 替换 spring.datasource.password、app.security.admin.password 等为强密码后再启动。
+
+spring:
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/tg_query_meta?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: tg_meta
+    password: '请替换为数据库密码'
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 1
+
+app:
+  cors:
+    allowed-origins:
+      - https://api.hongtaiglobal.com
+  security:
+    admin:
+      username: admin
+      password: '请替换为管理后台强密码'
+  telegram:
+    # 一键「注册 Webhook」默认公网基址（无末尾 /）；与浏览器访问域名一致
+    public-base-url: https://api.hongtaiglobal.com
+    outbound-proxy:
+      host: ""
+      port: 0
+  encryption:
+    secret-key-base64: ''

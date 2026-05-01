@@ -1,0 +1,6 @@
+# 集成测试：数据源由 {@code @DynamicPropertySource} 指向 Testcontainers MySQL。
+spring:
+  flyway:
+    enabled: true
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver

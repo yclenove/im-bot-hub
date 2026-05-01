@@ -1,0 +1,18 @@
+.idea/
+.vscode/
+# Local Cursor rules (do not commit; keep team norms in docs/*.md)
+.cursor/rules/
+*.iml
+**/target/
+node_modules/
+**/dist/
+.env
+.env.development
+*.log
+*.sql
+!backend/src/main/resources/db/migration/*.sql
+*.sql.zip
+*mysql_data*.sql
+*mysql_data*.sql.zip
+**/effective-pom-out
+**/dist.zip
