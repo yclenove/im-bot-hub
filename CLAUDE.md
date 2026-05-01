@@ -4,9 +4,9 @@
 
 本项目由 `telegram-query-bot` 重构而来，目标是成为**通用 IM 查询机器人配置中心**（im-bot-hub）。
 
-- **新包名**：`com.sov.imhub`（当前代码仍是 `com.sov.telegram.bot`，待阶段 0.5 重命名）
-- **新 artifactId**：`im-bot-hub`（当前 pom.xml 仍是 `telegram-query-bot`，待修改）
-- **旧仓库**：`H:\aicoding\telegram-query-bot`
+- **新包名**：`com.sov.imhub`（已完成重命名）
+- **新 artifactId**：`im-bot-hub`（已完成）
+- **旧仓库**：`H:\aicoding\telegram-query-bot`（V1 版本，V2 已迁至此仓库）
 
 ## 当前进度
 
@@ -23,7 +23,7 @@
 - [x] 阶段 3：API/DTO 层重构 ✅（Bot DTO 废弃 TG 字段 / CommandLog API / Channel Allowlist API）
 - [x] 阶段 4：前端重构 ✅（Bot 表单折叠 TG 配置 / 命令日志 Tab 适配新 API）
 - [x] 阶段 5：新平台接入 ✅（Slack + Discord Webhook + OutboundMessenger）
-- [ ] **下一步**：提交到 im-bot-hub 仓库、`mvn test` 全量验证、部署测试
+- [ ] **下一步**：`mvn test` 全量验证、SecurityConfig 放行新 Webhook 路径、前端 Channel 管理页
 
 ## 关键文档
 
