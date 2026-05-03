@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestTemplate;
 
 import java.net.InetSocketAddress;
 import java.net.Proxy;
@@ -39,6 +40,11 @@ public class AppConfig {
             log.info("Telegram RestClient 使用 HTTP 代理: {}:{}", p.getHost().trim(), p.getPort());
         }
         return builder.build();
+    }
+
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
     }
 
     /** Required for {@code selectPage} on audit logs and other paged queries. */

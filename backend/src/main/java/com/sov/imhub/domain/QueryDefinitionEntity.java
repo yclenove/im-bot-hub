@@ -37,6 +37,8 @@ public class QueryDefinitionEntity {
     private Long deleteToken;
     /** LIST | LIST_DOT | LIST_CODE | LIST_BLOCKQUOTE | SECTION | MONO_PRE | CODE_BLOCK | KV_SINGLE_LINE — 见 FieldRenderService */
     private String telegramReplyStyle;
+    /** 限定适用渠道 ID 列表（JSON 数组），NULL 或空 = 所有渠道 */
+    private String channelScopeJson;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime deletedAt;

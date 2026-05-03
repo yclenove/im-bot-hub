@@ -64,7 +64,7 @@ public class LarkApiClient {
         }
     }
 
-    private String getTenantAccessToken(String appId, String appSecret) {
+    public String getTenantAccessToken(String appId, String appSecret) {
         String cacheKey = appId + ":" + appSecret.hashCode();
         TokenEntry cached = tokenCache.getIfPresent(cacheKey);
         if (cached != null && cached.expiresAtMs > System.currentTimeMillis() + 60_000) {
@@ -95,6 +95,65 @@ public class LarkApiClient {
             return token;
         } catch (Exception e) {
             log.warn("Lark token request failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 设置飞书机器人菜单（全量覆盖）。
+     *
+     * @param appId     应用 ID
+     * @param appSecret 应用密钥
+     * @param menus     菜单数组 JSON，格式：[{"name":"菜单名","action_type":0,"key":"cmd_key","name_i18n":{"zh_cn":"中文名"}}]
+     * @return API 响应
+     */
+    public JsonNode setBotMenus(String appId, String appSecret, String menus) {
+        String token = getTenantAccessToken(appId, appSecret);
+        if (token == null) {
+            log.warn("Lark setBotMenus: token null appId={}", appId);
+            return null;
+        }
+        String url = "https://open.feishu.cn/open-apis/bot/v3/menus";
+        ObjectNode body = objectMapper.createObjectNode();
+        try {
+            body.set("bot_menu", objectMapper.readTree(menus));
+        } catch (Exception e) {
+            log.warn("Lark setBotMenus: invalid menu JSON: {}", e.getMessage());
+            return null;
+        }
+        try {
+            String raw = larkRestClient
+                    .post()
+                    .uri(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("Authorization", "Bearer " + token)
+                    .body(body.toString())
+                    .retrieve()
+                    .body(String.class);
+            return objectMapper.readTree(raw);
+        } catch (Exception e) {
+            log.warn("Lark setBotMenus failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 获取飞书机器人信息。
+     */
+    public JsonNode getBotInfo(String appId, String appSecret) {
+        String token = getTenantAccessToken(appId, appSecret);
+        if (token == null) return null;
+        String url = "https://open.feishu.cn/open-apis/bot/v3/info";
+        try {
+            String raw = larkRestClient
+                    .get()
+                    .uri(url)
+                    .header("Authorization", "Bearer " + token)
+                    .retrieve()
+                    .body(String.class);
+            return objectMapper.readTree(raw);
+        } catch (Exception e) {
+            log.warn("Lark getBotInfo failed: {}", e.getMessage());
             return null;
         }
     }

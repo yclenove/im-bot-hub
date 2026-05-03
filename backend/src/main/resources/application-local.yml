@@ -18,12 +18,25 @@
 # =============================================================================
 spring:
   flyway:
-    baseline-on-migrate: true
-    baseline-version: 1
+    baseline-on-migrate: false
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/tg_query_meta?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://127.0.0.1:3307/im_hub?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
-    password: change-me-local
+    password: DevRoot_3307!
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6380
+
+# Actuator 指标端点（Prometheus 采集用）
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus,health,info
+  metrics:
+    tags:
+      application: im-bot-hub
 
 app:
   telegram:

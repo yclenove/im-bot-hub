@@ -15,6 +15,10 @@ public class UserAllowlistEntity {
     private Long id;
     private Long botId;
     private Long telegramUserId;
+    /** 关联渠道 ID（可选，用于多平台白名单） */
+    private Long channelId;
+    /** 外部用户 ID（通用，各平台均可使用） */
+    private String externalUserId;
     private Boolean enabled;
     private LocalDateTime createdAt;
 }

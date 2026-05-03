@@ -5,8 +5,8 @@ import lombok.Data;
 
 @Data
 public class AllowlistUpsertRequest {
-    @NotNull
     private Long telegramUserId;
-
+    private Long channelId;
+    private String externalUserId;
     private boolean enabled = true;
 }

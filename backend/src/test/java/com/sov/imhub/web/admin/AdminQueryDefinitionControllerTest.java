@@ -3,11 +3,13 @@ package com.sov.imhub.web.admin;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.sov.imhub.domain.QueryDefinitionEntity;
 import com.sov.imhub.mapstruct.AdminDtoMapper;
+import com.sov.imhub.mapper.BotChannelMapper;
 import com.sov.imhub.mapper.BotMapper;
 import com.sov.imhub.mapper.DatasourceMapper;
 import com.sov.imhub.mapper.QueryDefinitionMapper;
 import com.sov.imhub.service.AuditLogService;
 import com.sov.imhub.service.api.ApiQueryConfigService;
+import com.sov.imhub.service.crypto.EncryptionService;
 import com.sov.imhub.service.jdbc.SqlTemplateValidator;
 import com.sov.imhub.service.telegram.TelegramApiClient;
 import com.sov.imhub.service.visual.VisualQueryCompilationService;
@@ -30,6 +32,7 @@ class AdminQueryDefinitionControllerTest {
 
     private final QueryDefinitionMapper queryDefinitionMapper = mock(QueryDefinitionMapper.class);
     private final BotMapper botMapper = mock(BotMapper.class);
+    private final BotChannelMapper botChannelMapper = mock(BotChannelMapper.class);
     private final DatasourceMapper datasourceMapper = mock(DatasourceMapper.class);
     private final AdminDtoMapper adminDtoMapper = mock(AdminDtoMapper.class);
     private final SqlTemplateValidator sqlTemplateValidator = mock(SqlTemplateValidator.class);
@@ -37,17 +40,20 @@ class AdminQueryDefinitionControllerTest {
     private final VisualQueryCompilationService visualQueryCompilationService = mock(VisualQueryCompilationService.class);
     private final ApiQueryConfigService apiQueryConfigService = mock(ApiQueryConfigService.class);
     private final TelegramApiClient telegramApiClient = mock(TelegramApiClient.class);
+    private final EncryptionService encryptionService = mock(EncryptionService.class);
 
     private final AdminQueryDefinitionController controller = new AdminQueryDefinitionController(
             queryDefinitionMapper,
             botMapper,
+            botChannelMapper,
             datasourceMapper,
             adminDtoMapper,
             sqlTemplateValidator,
             auditLogService,
             visualQueryCompilationService,
             apiQueryConfigService,
-            telegramApiClient
+            telegramApiClient,
+            encryptionService
     );
 
     @Test

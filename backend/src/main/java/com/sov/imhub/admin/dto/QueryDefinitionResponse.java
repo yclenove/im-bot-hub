@@ -22,4 +22,6 @@ public class QueryDefinitionResponse {
     boolean enabled;
     /** LIST | LIST_DOT | LIST_CODE | LIST_BLOCKQUOTE | SECTION | MONO_PRE | CODE_BLOCK | KV_SINGLE_LINE | VALUES_JOIN_SPACE | VALUES_JOIN_PIPE | VALUES_JOIN_CUSTOM:<delimiter> | TABLE_PRE */
     String telegramReplyStyle;
+    /** 限定适用渠道 ID 列表（JSON 数组），null = 所有渠道 */
+    String channelScopeJson;
 }

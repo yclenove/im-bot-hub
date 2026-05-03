@@ -9,5 +9,8 @@ public class AllowlistResponse {
     Long id;
     Long botId;
     Long telegramUserId;
+    Long channelId;
+    String externalUserId;
+    String platform;
     boolean enabled;
 }

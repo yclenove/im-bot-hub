@@ -2,18 +2,11 @@ package com.sov.imhub.admin.dto;
 
 import lombok.Data;
 
-import java.util.List;
-
+/**
+ * 更新机器人请求（纯逻辑分组）。
+ */
 @Data
 public class BotUpdateRequest {
     private String name;
-    private String telegramBotToken;
-    private String telegramBotUsername;
-    /** Null = leave unchanged; empty string = clear secret. */
-    private String webhookSecretToken;
     private Boolean enabled;
-
-    private String telegramChatScope;
-
-    private List<Long> telegramAllowedChatIds;
 }

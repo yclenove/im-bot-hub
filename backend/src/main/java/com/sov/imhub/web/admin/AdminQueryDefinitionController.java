@@ -4,15 +4,18 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sov.imhub.admin.dto.QueryDefinitionResponse;
 import com.sov.imhub.admin.dto.QueryDefinitionUpsertRequest;
 import com.sov.imhub.domain.Bot;
+import com.sov.imhub.domain.BotChannelEntity;
 import com.sov.imhub.domain.QueryDefinitionEntity;
 import com.sov.imhub.service.api.ApiQueryConfig;
 import com.sov.imhub.service.api.ApiQueryConfigService;
 import com.sov.imhub.mapstruct.AdminDtoMapper;
+import com.sov.imhub.mapper.BotChannelMapper;
 import com.sov.imhub.mapper.BotMapper;
 import com.sov.imhub.mapper.DatasourceMapper;
 import com.sov.imhub.mapper.QueryDefinitionMapper;
 import com.sov.imhub.service.AuditLogService;
 import com.sov.imhub.service.QueryParamSchema;
+import com.sov.imhub.service.crypto.EncryptionService;
 import com.sov.imhub.service.jdbc.SqlTemplateValidator;
 import com.sov.imhub.service.telegram.TelegramApiClient;
 import com.sov.imhub.service.visual.VisualQueryCompilationService;
@@ -54,6 +57,7 @@ public class AdminQueryDefinitionController {
 
     private final QueryDefinitionMapper queryDefinitionMapper;
     private final BotMapper botMapper;
+    private final BotChannelMapper botChannelMapper;
     private final DatasourceMapper datasourceMapper;
     private final AdminDtoMapper adminDtoMapper;
     private final SqlTemplateValidator sqlTemplateValidator;
@@ -61,6 +65,7 @@ public class AdminQueryDefinitionController {
     private final VisualQueryCompilationService visualQueryCompilationService;
     private final ApiQueryConfigService apiQueryConfigService;
     private final TelegramApiClient telegramApiClient;
+    private final EncryptionService encryptionService;
 
     @GetMapping
     public List<QueryDefinitionResponse> list(@PathVariable Long botId) {
@@ -106,6 +111,7 @@ public class AdminQueryDefinitionController {
         e.setMaxRows(req.getMaxRows());
         e.setEnabled(req.isEnabled());
         e.setTelegramReplyStyle(normalizeTelegramReplyStyle(req.getTelegramReplyStyle()));
+        e.setChannelScopeJson(normalizeChannelScope(req.getChannelScopeJson()));
         queryDefinitionMapper.insert(e);
         if (compiled.syncFieldMappings()) {
             syncFieldMappings(e.getId(), compiled);
@@ -142,6 +148,7 @@ public class AdminQueryDefinitionController {
         e.setMaxRows(req.getMaxRows());
         e.setEnabled(req.isEnabled());
         e.setTelegramReplyStyle(normalizeTelegramReplyStyle(req.getTelegramReplyStyle()));
+        e.setChannelScopeJson(normalizeChannelScope(req.getChannelScopeJson()));
         queryDefinitionMapper.updateById(e);
         if (compiled.syncFieldMappings()) {
             syncFieldMappings(queryId, compiled);
@@ -190,6 +197,16 @@ public class AdminQueryDefinitionController {
                     "telegramReplyStyle 仅支持: LIST, LIST_DOT, LIST_CODE, LIST_BLOCKQUOTE, SECTION, MONO_PRE, CODE_BLOCK, KV_SINGLE_LINE, VALUES_JOIN_SPACE, VALUES_JOIN_PIPE, VALUES_JOIN_CUSTOM:<连接符>, TABLE_PRE");
         }
         return u;
+    }
+
+    /**
+     * 规范化渠道作用域：null 或空字符串 → null（所有渠道）；否则保持 JSON 数组。
+     */
+    private static String normalizeChannelScope(String raw) {
+        if (raw == null || raw.isBlank() || "[]".equals(raw.trim())) {
+            return null;
+        }
+        return raw.trim();
     }
 
     private void assertCommandUniqueForBot(Long botId, String command, Long excludeQueryId) {
@@ -276,8 +293,23 @@ public class AdminQueryDefinitionController {
     }
 
     private void syncTelegramMenuCommands(Long botId) {
-        Bot bot = botMapper.selectById(botId);
-        if (bot == null || bot.getTelegramBotToken() == null || bot.getTelegramBotToken().isBlank()) {
+        BotChannelEntity channel = botChannelMapper.selectOne(
+                new LambdaQueryWrapper<BotChannelEntity>()
+                        .eq(BotChannelEntity::getBotId, botId)
+                        .eq(BotChannelEntity::getPlatform, "TELEGRAM")
+                        .last("LIMIT 1"));
+        if (channel == null) {
+            return;
+        }
+        String token = null;
+        try {
+            String credPlain = com.sov.imhub.service.crypto.ChannelCredentialsCrypto.unwrap(
+                    encryptionService, channel.getCredentialsJson());
+            com.fasterxml.jackson.databind.JsonNode node = MENU_LABEL_JSON.readTree(credPlain);
+            token = node.has("token") ? node.get("token").asText() : null;
+        } catch (Exception ignored) {
+        }
+        if (token == null || token.isBlank()) {
             return;
         }
         List<TelegramApiClient.CommandSpec> commands =
@@ -291,7 +323,7 @@ public class AdminQueryDefinitionController {
                         .map(this::toCommandSpec)
                         .toList();
         try {
-            telegramApiClient.setMyCommands(bot.getTelegramBotToken(), commands);
+            telegramApiClient.setMyCommands(token, commands);
         } catch (Exception ex) {
             auditLogService.log("WARN", "BOT", String.valueOf(botId), "同步 Telegram 菜单失败: " + ex.getMessage());
         }
