@@ -29,20 +29,21 @@ public class PerformanceService {
             .maximumSize(1000)
             .build();
 
-    private final ConcurrentHashMap<String, CacheEntry> queryCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CacheEntry<?>> queryCache = new ConcurrentHashMap<>();
 
     /**
      * 缓存查询结果。
      */
+    @SuppressWarnings("unchecked")
     public <T> T cacheQuery(String key, long ttlSeconds, QuerySupplier<T> supplier) {
-        CacheEntry entry = queryCache.get(key);
+        CacheEntry<?> entry = queryCache.get(key);
         if (entry != null && !entry.isExpired()) {
             log.debug("cache hit: {}", key);
             return (T) entry.getValue();
         }
 
         T result = supplier.get();
-        queryCache.put(key, new CacheEntry(result, ttlSeconds));
+        queryCache.put(key, new CacheEntry<>(result, ttlSeconds));
         log.debug("cache miss: {}", key);
         return result;
     }
@@ -144,11 +145,11 @@ public class PerformanceService {
      * 缓存条目。
      */
     @Data
-    private static class CacheEntry {
-        private final Object value;
+    private static class CacheEntry<T> {
+        private final T value;
         private final long expireAt;
 
-        public CacheEntry(Object value, long ttlSeconds) {
+        public CacheEntry(T value, long ttlSeconds) {
             this.value = value;
             this.expireAt = System.currentTimeMillis() + ttlSeconds * 1000;
         }

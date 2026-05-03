@@ -176,12 +176,120 @@ public class WorkflowEngine {
     }
 
     /**
-     * 评估表达式。
+     * 评估表达式（支持 SpEL 语法）。
+     *
+     * 支持的表达式示例：
+     * - "#{result.success == true}"
+     * - "#{result.rowCount > 0}"
+     * - "#{variables.retryCount < 3}"
      */
     private boolean evaluateExpression(String expression, Map<String, Object> context) {
-        // 简单实现：支持基本比较
-        // 实际应该使用 Spring Expression Language (SpEL)
+        if (expression == null || expression.isBlank()) {
+            return true;
+        }
+
+        try {
+            // 移除 #{} 包装
+            String spel = expression;
+            if (spel.startsWith("#{" ) && spel.endsWith("}")) {
+                spel = spel.substring(2, spel.length() - 1);
+            }
+
+            // 使用 SpEL 表达式解析器
+            org.springframework.expression.spel.standard.SpelExpressionParser parser =
+                    new org.springframework.expression.spel.standard.SpelExpressionParser();
+            org.springframework.expression.Expression exp = parser.parseExpression(spel);
+
+            // 创建评估上下文
+            org.springframework.expression.spel.support.StandardEvaluationContext evalContext =
+                    new org.springframework.expression.spel.support.StandardEvaluationContext();
+
+            // 注入上下文变量
+            for (Map.Entry<String, Object> entry : context.entrySet()) {
+                evalContext.setVariable(entry.getKey(), entry.getValue());
+            }
+
+            Boolean result = exp.getValue(evalContext, Boolean.class);
+            log.info("expression evaluated: {} = {}", expression, result);
+            return Boolean.TRUE.equals(result);
+
+        } catch (Exception e) {
+            log.warn("expression evaluation failed: {}, error: {}", expression, e.getMessage());
+            // 回退到简单比较
+            return evaluateSimpleExpression(expression, context);
+        }
+    }
+
+    /**
+     * 简单表达式评估（回退方案）。
+     * 支持格式：key operator value
+     * 例如：status == success, count > 10
+     */
+    private boolean evaluateSimpleExpression(String expression, Map<String, Object> context) {
+        // 解析简单比较表达式
+        String[] operators = {"==", "!=", ">", "<", ">=", "<="};
+        for (String op : operators) {
+            int idx = expression.indexOf(op);
+            if (idx > 0) {
+                String left = expression.substring(0, idx).trim();
+                String right = expression.substring(idx + op.length()).trim();
+
+                Object leftValue = resolveValue(left, context);
+                Object rightValue = resolveValue(right, context);
+
+                if (leftValue == null || rightValue == null) {
+                    return false;
+                }
+
+                return compareValues(leftValue, rightValue, op);
+            }
+        }
         return true;
+    }
+
+    private Object resolveValue(String key, Map<String, Object> context) {
+        // 尝试从上下文获取
+        if (context.containsKey(key)) {
+            return context.get(key);
+        }
+        // 尝试嵌套访问（如 result.success）
+        if (key.contains(".")) {
+            String[] parts = key.split("\\.", 2);
+            Object parent = context.get(parts[0]);
+            if (parent instanceof Map) {
+                return ((Map<?, ?>) parent).get(parts[1]);
+            }
+        }
+        // 尝试作为字面量
+        return key;
+    }
+
+    private boolean compareValues(Object left, Object right, String operator) {
+        try {
+            if (left instanceof Number && right instanceof Number) {
+                double l = ((Number) left).doubleValue();
+                double r = ((Number) right).doubleValue();
+                return switch (operator) {
+                    case "==" -> l == r;
+                    case "!=" -> l != r;
+                    case ">" -> l > r;
+                    case "<" -> l < r;
+                    case ">=" -> l >= r;
+                    case "<=" -> l <= r;
+                    default -> false;
+                };
+            }
+            // 字符串比较
+            String l = String.valueOf(left);
+            String r = String.valueOf(right);
+            return switch (operator) {
+                case "==" -> l.equals(r);
+                case "!=" -> !l.equals(r);
+                default -> false;
+            };
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**

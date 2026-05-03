@@ -117,7 +117,7 @@ public class ApprovalService {
     }
 
     /**
-     * 获取待审批列表。
+     * 获取待审批列表（按审批人过滤）。
      */
     public List<Map<String, Object>> getPendingApprovals(Long approverId) {
         return jdbcTemplate.queryForList(
@@ -126,9 +126,14 @@ public class ApprovalService {
                 FROM t_approval_log al
                 JOIN t_approval_rule ar ON al.rule_id = ar.id
                 WHERE al.status = 'PENDING'
+                AND (
+                    ar.approver_ids LIKE :approverPattern
+                    OR ar.approver_ids IS NULL
+                    OR ar.approver_ids = '[]'
+                )
                 ORDER BY al.created_at DESC
                 """,
-                Map.of());
+                Map.of("approverPattern", "%\"" + approverId + "\"%"));
     }
 
     /**

@@ -85,13 +85,49 @@ public class LlmClient {
     }
 
     /**
-     * 模拟响应（用于测试或 API 未配置时）。
+     * 基于规则的 SQL 生成（API Key 未配置时的回退方案）。
+     * 根据用户问题中的关键词生成基础 SQL。
      */
     private String mockResponse(String prompt) {
-        if (prompt.contains("SQL")) {
+        String lowerPrompt = prompt.toLowerCase();
+
+        // 从 schema 中提取表名
+        String tableName = extractFirstTable(prompt);
+
+        if (lowerPrompt.contains("查询") || lowerPrompt.contains("select") || lowerPrompt.contains("查")) {
+            if (tableName != null) {
+                return "SELECT * FROM " + tableName + " WHERE 1=1 LIMIT 10";
+            }
             return "SELECT * FROM t_query_definition WHERE enabled = 1 LIMIT 10";
         }
-        return "这是一个模拟响应。请配置 AI API Key 以启用真实 AI 功能。";
+
+        if (lowerPrompt.contains("统计") || lowerPrompt.contains("count") || lowerPrompt.contains("数量")) {
+            if (tableName != null) {
+                return "SELECT COUNT(*) as total FROM " + tableName;
+            }
+            return "SELECT COUNT(*) as total FROM t_command_log WHERE DATE(created_at) = CURDATE()";
+        }
+
+        if (lowerPrompt.contains("最近") || lowerPrompt.contains("latest")) {
+            if (tableName != null) {
+                return "SELECT * FROM " + tableName + " ORDER BY created_at DESC LIMIT 10";
+            }
+            return "SELECT * FROM t_command_log ORDER BY created_at DESC LIMIT 10";
+        }
+
+        // 默认返回通用查询
+        return "SELECT * FROM t_query_definition WHERE enabled = 1 LIMIT 10";
+    }
+
+    /**
+     * 从 prompt 中提取第一个表名。
+     */
+    private String extractFirstTable(String prompt) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("Table: (\\w+)").matcher(prompt);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return null;
     }
 
     /**

@@ -93,11 +93,25 @@ public class TenantService {
     }
 
     /**
-     * 增加使用量。
+     * 增加使用量（先检查配额）。
+     *
+     * @throws IllegalArgumentException 如果超出配额限制
      */
     public void incrementUsage(Long tenantId, String quotaType) {
+        if (!checkQuota(tenantId, quotaType)) {
+            throw new IllegalArgumentException("已超出配额限制: " + quotaType);
+        }
         jdbcTemplate.update(
                 "UPDATE t_tenant_quota SET current_usage = current_usage + 1 WHERE tenant_id = :tenantId AND quota_type = :quotaType",
+                Map.of("tenantId", tenantId, "quotaType", quotaType));
+    }
+
+    /**
+     * 减少使用量。
+     */
+    public void decrementUsage(Long tenantId, String quotaType) {
+        jdbcTemplate.update(
+                "UPDATE t_tenant_quota SET current_usage = GREATEST(current_usage - 1, 0) WHERE tenant_id = :tenantId AND quota_type = :quotaType",
                 Map.of("tenantId", tenantId, "quotaType", quotaType));
     }
 

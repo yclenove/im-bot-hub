@@ -76,24 +76,39 @@ public class PermissionService {
      *
      * @param role 角色
      * @param resourceType 资源类型
-     * @param resourceId 资源 ID
+     * @param resourceId 资源 ID（null 表示所有资源）
      * @param permissions 权限列表
      */
     public void setPermissions(String role, String resourceType, Long resourceId, List<String> permissions) {
         try {
             String permissionsJson = objectMapper.writeValueAsString(permissions);
 
-            String sql = """
-                INSERT INTO t_permission_matrix (role, resource_type, resource_id, permissions)
-                VALUES (:role, :resourceType, :resourceId, :permissions)
-                ON DUPLICATE KEY UPDATE permissions = :permissions
-                """;
+            // 先删除旧记录
+            String deleteSql = resourceId != null
+                    ? "DELETE FROM t_permission_matrix WHERE role = :role AND resource_type = :resourceType AND resource_id = :resourceId"
+                    : "DELETE FROM t_permission_matrix WHERE role = :role AND resource_type = :resourceType AND resource_id IS NULL";
 
-            jdbcTemplate.update(sql, Map.of(
-                    "role", role,
-                    "resourceType", resourceType,
-                    "resourceId", resourceId != null ? resourceId : java.sql.Types.NULL,
-                    "permissions", permissionsJson));
+            java.util.Map<String, Object> deleteParams = new java.util.HashMap<>();
+            deleteParams.put("role", role);
+            deleteParams.put("resourceType", resourceType);
+            if (resourceId != null) {
+                deleteParams.put("resourceId", resourceId);
+            }
+            jdbcTemplate.update(deleteSql, deleteParams);
+
+            // 插入新记录
+            String insertSql = resourceId != null
+                    ? "INSERT INTO t_permission_matrix (role, resource_type, resource_id, permissions) VALUES (:role, :resourceType, :resourceId, :permissions)"
+                    : "INSERT INTO t_permission_matrix (role, resource_type, resource_id, permissions) VALUES (:role, :resourceType, NULL, :permissions)";
+
+            java.util.Map<String, Object> insertParams = new java.util.HashMap<>();
+            insertParams.put("role", role);
+            insertParams.put("resourceType", resourceType);
+            if (resourceId != null) {
+                insertParams.put("resourceId", resourceId);
+            }
+            insertParams.put("permissions", permissionsJson);
+            jdbcTemplate.update(insertSql, insertParams);
 
             log.info("set permissions: role={}, resourceType={}, resourceId={}, permissions={}",
                     role, resourceType, resourceId, permissions);
