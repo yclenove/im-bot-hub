@@ -1,15 +1,17 @@
 package com.sov.imhub.gateway;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -22,9 +24,11 @@ public class ApiGatewayService {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
 
-    // 限流计数器
-    private final ConcurrentHashMap<String, AtomicLong> rateLimitCounters = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, LocalDateTime> rateLimitResetTimes = new ConcurrentHashMap<>();
+    // 限流计数器（使用 Caffeine 自动过期）
+    private final Cache<String, AtomicLong> rateLimitCounters = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofMinutes(2))
+            .maximumSize(10000)
+            .build();
 
     /**
      * 检查 API Key 是否有效。
@@ -69,11 +73,8 @@ public class ApiGatewayService {
         int rateLimit = ((Number) keys.get(0).get("rate_limit")).intValue();
         String counterKey = apiKey + ":" + LocalDateTime.now().getMinute();
 
-        AtomicLong counter = rateLimitCounters.computeIfAbsent(counterKey, k -> new AtomicLong(0));
+        AtomicLong counter = rateLimitCounters.get(counterKey, k -> new AtomicLong(0));
         long currentCount = counter.incrementAndGet();
-
-        // 每分钟重置
-        rateLimitResetTimes.computeIfAbsent(apiKey, k -> LocalDateTime.now().plusMinutes(1));
 
         if (currentCount > rateLimit) {
             log.warn("rate limit exceeded: apiKey={}, count={}", apiKey, currentCount);

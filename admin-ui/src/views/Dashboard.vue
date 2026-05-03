@@ -23,6 +23,17 @@ import AllowlistTab from '../components/AllowlistTab.vue'
 import CommandLogTab from '../components/CommandLogTab.vue'
 import AuditLogTab from '../components/AuditLogTab.vue'
 import SettingsTab from '../components/SettingsTab.vue'
+import TemplateMarket from '../components/TemplateMarket.vue'
+import CommandStats from '../components/CommandStats.vue'
+import ChannelHealth from '../components/ChannelHealth.vue'
+import Nl2SqlChat from '../components/Nl2SqlChat.vue'
+import AnomalyDashboard from '../components/AnomalyDashboard.vue'
+import WorkflowDesigner from '../components/WorkflowDesigner.vue'
+import ApprovalManager from '../components/ApprovalManager.vue'
+import ApiKeyManager from '../components/ApiKeyManager.vue'
+import ClusterStatus from '../components/ClusterStatus.vue'
+import PerformanceMonitor from '../components/PerformanceMonitor.vue'
+import TenantManager from '../components/TenantManager.vue'
 
 const router = useRouter()
 
@@ -2399,6 +2410,50 @@ onBeforeUnmount(() => {
 
         <el-tab-pane label="设置" name="settings">
           <SettingsTab />
+        </el-tab-pane>
+
+        <el-tab-pane label="模板市场" name="templates">
+          <TemplateMarket />
+        </el-tab-pane>
+
+        <el-tab-pane label="命令统计" name="stats">
+          <CommandStats :bot-id="Number(bots[0]?.id) || 0" />
+        </el-tab-pane>
+
+        <el-tab-pane label="渠道健康" name="health">
+          <ChannelHealth />
+        </el-tab-pane>
+
+        <el-tab-pane label="AI 查询" name="nl2sql">
+          <Nl2SqlChat :bot-id="Number(bots[0]?.id) || 0" :datasource-id="Number(dsList[0]?.id) || 0" />
+        </el-tab-pane>
+
+        <el-tab-pane label="异常检测" name="anomaly">
+          <AnomalyDashboard />
+        </el-tab-pane>
+
+        <el-tab-pane label="工作流" name="workflow">
+          <WorkflowDesigner />
+        </el-tab-pane>
+
+        <el-tab-pane label="审批管理" name="approval">
+          <ApprovalManager />
+        </el-tab-pane>
+
+        <el-tab-pane label="API Key" name="apikey">
+          <ApiKeyManager />
+        </el-tab-pane>
+
+        <el-tab-pane label="集群状态" name="cluster">
+          <ClusterStatus />
+        </el-tab-pane>
+
+        <el-tab-pane label="性能监控" name="performance">
+          <PerformanceMonitor />
+        </el-tab-pane>
+
+        <el-tab-pane label="租户管理" name="tenant">
+          <TenantManager />
         </el-tab-pane>
       </el-tabs>
     </el-main>

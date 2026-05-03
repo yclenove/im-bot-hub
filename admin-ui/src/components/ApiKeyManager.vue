@@ -169,11 +169,6 @@ onMounted(loadKeys)
             <el-date-picker v-model="form.expiresAt" type="datetime" placeholder="留空永不过期" />
           </el-form-item>
         </el-form>
-
-        <template #footer>
-          <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="createKey">创建</el-button>
-        </template>
       </template>
 
       <template v-else>
@@ -191,9 +186,11 @@ onMounted(loadKeys)
           </div>
           <el-alert title="请妥善保存 Secret Key，关闭后将无法再次查看" type="warning" show-icon style="margin-top: 12px" />
         </div>
-        <template #footer>
-          <el-button type="primary" @click="dialogVisible = false">关闭</el-button>
-        </template>
+      </template>
+
+      <template #footer>
+        <el-button @click="dialogVisible = false">{{ createdKey ? '关闭' : '取消' }}</el-button>
+        <el-button v-if="!createdKey" type="primary" @click="createKey">创建</el-button>
       </template>
     </el-dialog>
   </div>

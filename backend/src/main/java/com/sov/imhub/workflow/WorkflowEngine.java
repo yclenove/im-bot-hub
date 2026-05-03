@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -33,6 +34,7 @@ public class WorkflowEngine {
      * @return 执行记录 ID
      */
     @Async
+    @Transactional
     public Long execute(Long workflowId, Map<String, Object> input, Long triggeredBy) {
         log.info("workflow execute workflowId={} triggeredBy={}", workflowId, triggeredBy);
 
@@ -69,13 +71,38 @@ public class WorkflowEngine {
     }
 
     /**
-     * 执行步骤列表。
+     * 执行步骤列表（支持并行执行）。
      */
     private void executeSteps(List<WorkflowStep> steps, Long executionId, Map<String, Object> context) {
-        for (WorkflowStep step : steps) {
+        // 分离可并行和必须串行的步骤
+        List<WorkflowStep> parallelSteps = steps.stream()
+                .filter(s -> s.getConfig() != null && Boolean.TRUE.equals(s.getConfig().get("parallel")))
+                .toList();
+        List<WorkflowStep> sequentialSteps = steps.stream()
+                .filter(s -> s.getConfig() == null || !Boolean.TRUE.equals(s.getConfig().get("parallel")))
+                .toList();
+
+        // 先并行执行可并行的步骤
+        if (!parallelSteps.isEmpty()) {
+            List<java.util.concurrent.CompletableFuture<Void>> futures = parallelSteps.stream()
+                    .map(step -> java.util.concurrent.CompletableFuture.runAsync(() -> {
+                        try {
+                            executeStep(step, executionId, context);
+                        } catch (Exception e) {
+                            log.error("parallel step failed: {}", e.getMessage());
+                        }
+                    }))
+                    .toList();
+
+            // 等待所有并行步骤完成
+            java.util.concurrent.CompletableFuture.allOf(
+                    futures.toArray(new java.util.concurrent.CompletableFuture[0])).join();
+        }
+
+        // 再串行执行必须串行的步骤
+        for (WorkflowStep step : sequentialSteps) {
             executeStep(step, executionId, context);
 
-            // 检查是否需要停止
             String status = getExecutionStatus(executionId);
             if ("CANCELLED".equals(status) || "FAILED".equals(status)) {
                 break;

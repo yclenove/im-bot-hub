@@ -106,29 +106,63 @@ public class Nl2SqlService {
         // 保存到 t_nl2sql_history
     }
 
+    /**
+     * 从 INFORMATION_SCHEMA 提取表结构信息（支持指定数据库）。
+     */
     private String extractSchema(DatasourceEntity datasource) {
-        // 从数据库提取表结构信息
         StringBuilder schema = new StringBuilder();
         try {
+            // 从 JDBC URL 提取数据库名
+            String dbName = extractDatabaseName(datasource.getJdbcUrl());
+
+            // 使用 INFORMATION_SCHEMA 获取表和列信息
             List<Map<String, Object>> tables = jdbcTemplate.queryForList(
-                    "SHOW TABLES", Map.of());
+                    "SELECT TABLE_NAME, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = :dbName AND TABLE_TYPE = 'BASE TABLE'",
+                    Map.of("dbName", dbName));
+
             for (Map<String, Object> table : tables) {
-                String tableName = table.values().iterator().next().toString();
-                schema.append("Table: ").append(tableName).append("\n");
+                String tableName = (String) table.get("TABLE_NAME");
+                String comment = (String) table.get("TABLE_COMMENT");
+                schema.append("Table: ").append(tableName);
+                if (comment != null && !comment.isBlank()) {
+                    schema.append(" (").append(comment).append(")");
+                }
+                schema.append("\n");
 
                 List<Map<String, Object>> columns = jdbcTemplate.queryForList(
-                        "SHOW COLUMNS FROM " + tableName, Map.of());
+                        "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_COMMENT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = :dbName AND TABLE_NAME = :tableName ORDER BY ORDINAL_POSITION",
+                        Map.of("dbName", dbName, "tableName", tableName));
+
                 for (Map<String, Object> col : columns) {
-                    schema.append("  - ").append(col.get("Field"))
-                            .append(" (").append(col.get("Type")).append(")")
-                            .append(col.get("Null").equals("NO") ? " NOT NULL" : "")
-                            .append("\n");
+                    schema.append("  - ").append(col.get("COLUMN_NAME"))
+                            .append(" (").append(col.get("COLUMN_TYPE")).append(")")
+                            .append("NO".equals(col.get("IS_NULLABLE")) ? " NOT NULL" : "");
+                    String colComment = (String) col.get("COLUMN_COMMENT");
+                    if (colComment != null && !colComment.isBlank()) {
+                        schema.append(" -- ").append(colComment);
+                    }
+                    schema.append("\n");
                 }
             }
         } catch (Exception e) {
             log.warn("extract schema failed: {}", e.getMessage());
         }
         return schema.toString();
+    }
+
+    /**
+     * 从 JDBC URL 提取数据库名。
+     */
+    private String extractDatabaseName(String jdbcUrl) {
+        if (jdbcUrl == null) return "im_hub";
+        // jdbc:mysql://host:port/database?params
+        try {
+            String afterSlash = jdbcUrl.substring(jdbcUrl.lastIndexOf('/') + 1);
+            int questionMark = afterSlash.indexOf('?');
+            return questionMark > 0 ? afterSlash.substring(0, questionMark) : afterSlash;
+        } catch (Exception e) {
+            return "im_hub";
+        }
     }
 
     private String buildPrompt(String question, String schema, List<QueryDefinitionEntity> relatedQueries) {

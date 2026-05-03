@@ -1,162 +1,341 @@
-# im-bot-hub
+# IM Bot Hub
 
-## 简介（中文）
+> 通用 IM 查询机器人配置中心 — AI 驱动的企业级 IM 运维中枢
 
-通用 IM 查询机器人配置中心：将命令（例如 `/cx`）映射到针对 **只读** MySQL 数据源的 **参数化 SQL**，或映射到第三方 **API** 接口，支持 Telegram / 飞书 / 钉钉 / 企业微信 / Slack / Discord 等多平台统一接入，并通过 **REST + 管理端 Web** 维护机器人、渠道、数据源、查询配置与返回字段映射。
-
-**English:** Universal IM query bot configuration center that maps commands (e.g. `/cx`) to **parameterized** SQL on **read-only** MySQL sources or external **API** calls, with multi-platform support (Telegram / Lark / DingTalk / WeWork / Slack / Discord), managed via **REST + admin UI**.
+[![Build Status](https://github.com/yclenove/im-bot-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/yclenove/im-bot-hub/actions)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ---
 
-## 技术栈
+## 简介
 
-| 中文 | English |
-|------|---------|
-| Java 17、Spring Boot 3、Maven、MyBatis-Plus、Flyway | Java 17, Spring Boot 3, Maven, MyBatis-Plus, Flyway |
-| 管理 API：`/api/admin/**`（HTTP Basic）、OpenAPI（Swagger UI） | Admin API: `/api/admin/**` (HTTP Basic), OpenAPI (Swagger UI) |
-| 管理前端：Vue 3 + Vite + Element Plus（`admin-ui/`） | Admin UI: Vue 3 + Vite + Element Plus (`admin-ui/`) |
+**IM Bot Hub** 是一个通用 IM 查询机器人配置中心，支持 **Telegram / 飞书 / 钉钉 / 企业微信 / Slack / Discord** 六大平台。
 
-**文档 / Docs：** [`docs/PRD.md`](docs/PRD.md)、[`docs/REQUIREMENTS-ANALYSIS.md`](docs/REQUIREMENTS-ANALYSIS.md)、[`docs/DESIGN.md`](docs/DESIGN.md)、[`docs/TEST-STRATEGY.md`](docs/TEST-STRATEGY.md)、[`docs/ITERATION-PLAN.md`](docs/ITERATION-PLAN.md)、[**Telegram 配置说明（Token / Webhook / 命令菜单）**](docs/TELEGRAM-傻瓜配置.md)、[**服务器傻瓜部署（Linux）**](docs/DEPLOY-傻瓜部署.md)、[`docs/CODING-STANDARD.md`](docs/CODING-STANDARD.md)、[`docs/WORKFLOW.md`](docs/WORKFLOW.md)、[`CHANGELOG.md`](CHANGELOG.md)。生产部署细则另见 [`deploy/README-DEPLOY.md`](deploy/README-DEPLOY.md)。本地 Cursor 规则目录 `.cursor/rules/` **不纳入 Git**；团队规范以 `docs/` 为准。  
-**Agent 摘要：** [`AGENTS.md`](AGENTS.md)。
+通过 **机器人 → 渠道 → 数据源 → 查询定义** 的配置流程，即可在多个 IM 平台实现数据查询。
+
+### 核心特性
+
+- 🤖 **多平台支持**：6 大 IM 平台统一接入
+- 🔍 **多模式查询**：SQL / 向导 / API 三种查询模式
+- 🧠 **AI 智能**：NL2SQL 自然语言查询、异常检测、智能推荐
+- ⚙️ **工作流引擎**：多步骤流程、条件分支、定时任务、审批流
+- 🔐 **企业级安全**：SSO/LDAP、数据脱敏、权限矩阵、合规审计
+- 📊 **运维监控**：实时指标、告警系统、性能分析、集群状态
+- 🏢 **多租户**：租户管理、配额控制、资源隔离
+
+---
+
+## 架构
+
+```
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│  Telegram   │  │    飞书      │  │  Slack/Discord│
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       │               │               │
+       └───────────────┼───────────────┘
+                       │
+┌──────────────────────▼──────────────────────┐
+│              IM Bot Hub Backend              │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐       │
+│  │   AI    │ │ Workflow│ │ Security│       │
+│  │ Service │ │ Engine  │ │ Service │       │
+│  └─────────┘ └─────────┘ └─────────┘       │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐       │
+│  │ Gateway │ │Analytics│ │ Tenant  │       │
+│  │ Service │ │ Service │ │ Service │       │
+│  └─────────┘ └─────────┘ └─────────┘       │
+└──────────────────────┬──────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────┐
+│  MySQL  │  Redis  │  ES  │  Prometheus      │
+└─────────────────────────────────────────────┘
+```
 
 ---
 
 ## 快速开始
 
-### 中文
+### 环境要求
 
-1. 在本机安装并启动 **MySQL**（默认 `127.0.0.1:3306`），创建库 **`tg_query_meta`**（可用 [`scripts/mysql/01-create-database-and-grant.sql`](scripts/mysql/01-create-database-and-grant.sql)）。账号密码默认与 [`application-local.yml`](backend/src/main/resources/application-local.yml) 中一致（当前示例为 `root` / `change-me-local`，请按本机修改）。
-2. 启动后端（默认激活 **`local`** profile，连接本机库）：`cd backend && mvn spring-boot:run`
-3. 启动管理端（开发时代理到后端）：`cd admin-ui && npm install && npm run dev`  
-4. 浏览器访问 `http://localhost:5173/login`，管理端账号与 `application.yml` 中 `app.security.admin.*` 一致（默认 `admin` / `change-me`）。  
-5. 在管理端创建 **数据源**：**数据库**（副本 JDBC + 只读用户）或 **API**（Base URL、鉴权、连通性测试）；再创建 **机器人**（Telegram Token）和 **查询**（**向导 / 高级 SQL / API 可视化**，随数据源类型切换）。保存查询后会尽量刷新 Telegram **斜杠命令菜单**（`setMyCommands`）；详见 [`docs/TELEGRAM-傻瓜配置.md`](docs/TELEGRAM-傻瓜配置.md) **§6 命令、菜单与 /help**。  
-6. 在 Telegram 配置 `setWebhook` 为 `https://<公网域名>/api/webhook/<botId>`（`botId` 见管理端 Bots 表主键）。
+- JDK 17+
+- MySQL 5.7+ / 8.0+
+- Node.js 18+
+- Redis 7+（可选，用于缓存）
 
-#### Telegram 机器人注册与本系统配置（中文）
+### 本地开发
 
-1. **在 Telegram 创建机器人**  
-   打开 [@BotFather](https://t.me/BotFather)，发送 `/newbot`，按提示起名、命名，完成后复制 **HTTP API Token**（形如 `数字:字母`）。无需在 BotFather 里配置 Webhook 也可以稍后用 API 设置。
+```bash
+# 1. 克隆项目
+git clone https://github.com/yclenove/im-bot-hub.git
+cd im-bot-hub
 
-2. **在本系统登记 Bot**  
-   管理端登录后：**机器人** → **新建机器人**，填写名称、粘贴 **Token**；保存后记下表格中的 **ID**（即 `botId`）。可选：若使用 Webhook Secret，在「Webhook 密钥」填与 Telegram 一致的值。
+# 2. 启动后端
+cd backend
+./mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=local"
 
-3. **数据源与查询**  
-   - **数据源**：可以添加你的业务库 JDBC（建议只读账号），也可以添加第三方 **API 数据源**。API 模式支持 `NONE`、`BEARER_TOKEN`、`API_KEY_HEADER`、`API_KEY_QUERY`、`BASIC` 等常见鉴权方式，并支持默认 Header、默认 Query 参数、连通性测试。  
-   - **查询定义**：选中该机器人后，可配置三种模式：**SQL 模板**、**可视化向导**、**API 可视化**。API 模式可先选天气、币价等预制模板，再预览 JSON 返回，点选 / 拖拽字段决定机器人最终返回内容。  
-   - 可用行内 **「测试」** 在后台先跑通 SQL 或 API（不经过 Telegram）。
+# 3. 启动前端
+cd admin-ui
+npm install
+npm run dev
 
-4. **白名单（可选）**  
-   **白名单**为空：所有 Telegram 用户可使用该机器人的已配置命令。若添加了 Telegram **用户 ID**，则仅这些用户可用。
+# 4. 访问
+# 前端：http://localhost:5173
+# 后端：http://localhost:18089
+# API 文档：http://localhost:18089/swagger-ui/index.html
+```
 
-5. **Webhook（在 Telegram 里真正收消息）**  
-   - URL 必须是 **HTTPS** 公网地址，形如：  
-     `https://你的域名/api/webhook/<botId>`  
-   - **本机调试**：用 [ngrok](https://ngrok.com/) / [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/) 等把本机后端（默认端口 **18089**）暴露为 `https://xxxx...`，再把该 URL + `botId` 配到 Telegram。可用浏览器或 curl 调用 Telegram `setWebhook`。  
-   - 若配置了 Webhook 密钥，请保证 Telegram 发过来的请求头 `X-Telegram-Bot-Api-Secret-Token` 与本系统里配置一致。
+### Docker 部署
 
-6. **在 Telegram 里测试**  
-   打开与你的 Bot 的聊天窗口，发送 `/cx 你的参数`（命令与参数个数需与查询定义一致），应返回查询结果 HTML。
+```bash
+# 使用 Docker Compose 一键启动
+docker-compose up -d
 
-### English
-
-1. Run MySQL locally (`127.0.0.1:3306`), create DB **`tg_query_meta`**, set credentials to match [`application-local.yml`](backend/src/main/resources/application-local.yml) (current sample: `root` / `change-me-local`).
-2. Backend ( **`local`** profile by default): `cd backend && mvn spring-boot:run`
-3. Admin UI: `cd admin-ui && npm install && npm run dev`  
-4. Open `http://localhost:5173` — Basic auth matches `app.security.admin.*`.  
-5. Create **Datasource**, **Bot**, **Query** as above.  
-6. `setWebhook` to `https://<host>/api/webhook/<botId>`.
+# 访问
+# 前端：http://localhost:5173
+# 后端：http://localhost:18089
+```
 
 ---
 
-## 本地启动与生产打包 / Local dev and production artifacts
+## 功能模块
 
-### 中文
+### V2 - 核心功能
 
-| 步骤 | 命令 / 产物 |
-|------|-------------|
-| 后端（本机） | `cd backend`，Windows 推荐 **`.\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=local"`**（与 CI 一致，不依赖全局 `mvn`）；默认 HTTP 端口 **`18089`**（见 `application.yml`）。 |
-| 管理端（开发） | `cd admin-ui && npm install && npm run dev` → 浏览器 **`http://localhost:5173/login`**；Vite 将 `/api` 代理到上述后端。 |
-| 管理端（生产静态资源） | `cd admin-ui && npm run build` → 产物目录 **`admin-ui/dist/`**，由 Nginx 等托管并反代 `/api` 到后端。 |
-| 后端（生产 JAR） | `cd backend && .\mvnw.cmd clean package`（发布前建议去掉 `clean` 或保留均可；需全量测试时不要加 `-DskipTests`）→ **`backend/target/im-bot-hub-<version>.jar`**（版本以 `pom.xml` 为准；CI 部署阶段会统一重命名为 `im-bot-hub.jar`）。 |
-
-可选：若本机访问 Telegram API 需代理，可在启动前设置 `JAVA_TOOL_OPTIONS`（如 SOCKS）**仅用于** Telegram 相关客户端时，请仍遵循仓库内 `AppConfig` 对「Telegram 代理 vs 普通 HTTP 出站」的拆分，避免把业务 JDBC 或第三方 API 误走代理。
-
-### English
-
-| Step | Command / output |
-|------|------------------|
-| Backend (local) | `cd backend` then **`./mvnw spring-boot:run -Dspring-boot.run.profiles=local`** (Unix) or **`.\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=local"`** (Windows); default port **`18089`**. |
-| Admin UI (dev) | `cd admin-ui && npm install && npm run dev` → **`http://localhost:5173`**. |
-| Admin UI (prod static) | `cd admin-ui && npm run build` → **`admin-ui/dist/`**. |
-| Backend (prod JAR) | `cd backend && ./mvnw clean package` → **`backend/target/im-bot-hub-<version>.jar`** (renamed to `im-bot-hub.jar` in CI deploy stage). |
-
----
-
-## 安全（中文 / English）
-
-- **中文：**修改默认管理端密码；数据源密码可使用 `app.encryption.secret-key-base64`（32 字节 AES 密钥 Base64）加密存储。不得在日志中输出 Bot Token 或数据库密码。  
-- **English:** Change default admin password; use `app.encryption.secret-key-base64` for encrypted datasource secrets. Never log bot tokens or DB passwords.
-
----
-
-## 运维
-
-- **中文：**服务器部署（MySQL + JAR + Nginx HTTPS、systemd、Webhook 域名）见 [`deploy/README-DEPLOY.md`](deploy/README-DEPLOY.md)。  
-- **中文：**只读副本、索引与性能提示见 [`deploy/README-REPLICA-OPS.md`](deploy/README-REPLICA-OPS.md)。多实例限流说明见 [`deploy/README-HORIZONTAL.md`](deploy/README-HORIZONTAL.md)。  
-- **English:** Server deployment: [`deploy/README-DEPLOY.md`](deploy/README-DEPLOY.md). Replica/ops: [`deploy/README-REPLICA-OPS.md`](deploy/README-REPLICA-OPS.md).
-
----
-
-## 文档体系 / Documentation set
-
-| 文档 | 中文用途 | English purpose |
-|------|----------|-----------------|
-| [`docs/PRD.md`](docs/PRD.md) | 产品定位、目标用户、范围、成功指标 | Product positioning, users, scope, success metrics |
-| [`docs/REQUIREMENTS-ANALYSIS.md`](docs/REQUIREMENTS-ANALYSIS.md) | 业务问题、需求拆解、约束、风险与差距 | Business problem, requirement breakdown, constraints, risks, gaps |
-| [`docs/DESIGN.md`](docs/DESIGN.md) | 架构、数据流、安全、图示、设计变更记录 | Architecture, flow, security, diagrams, design log |
-| [`docs/TEST-STRATEGY.md`](docs/TEST-STRATEGY.md) | 测试分层、执行门槛、冒烟清单 | Test layers, execution gates, smoke checklist |
-| [`docs/API-TEST-CASES.md`](docs/API-TEST-CASES.md) | API 功能完整用例矩阵（数据源/查询/映射）与 MCP 自动化步骤 | Full API test matrix (datasource/query/mapping) and MCP automation steps |
-| [`docs/ITERATION-PLAN.md`](docs/ITERATION-PLAN.md) | 近期阶段目标、优先级与交付要求 | Near-term phases, priorities, and delivery requirements |
-| [`docs/WORKFLOW.md`](docs/WORKFLOW.md) | 提交流程、文档纪律、交付顺序 | Delivery workflow and documentation discipline |
-
-**中文：** 中大型功能建议按“需求分析 / PRD -> 设计文档 -> 实现与测试 -> 更新 README/CHANGELOG”推进。  
-**English:** For medium and large features, prefer the flow: requirements/PRD -> design -> implementation and testing -> README/CHANGELOG updates.
-
----
-
-## 产品能力概览 / Product capability overview
-
-### 中文
-
-- **双数据源模式**：同一套机器人平台同时支持数据库数据源与 API 数据源。
-- **API 傻瓜化配置**：提供天气、虚拟币价格等预制模板，管理员只需选模板、填少量参数、点一次测试即可起步。
-- **多鉴权方式**：支持无鉴权、Bearer Token、Basic、Header API Key、Query API Key。
-- **可视化 JSON 映射**：API 查询可预览返回样例，自动识别字段，管理员通过点选与拖拽决定机器人返回顺序与字段标签。
-- **统一字段渲染**：无论来源是数据库还是 API，最终都走统一的字段映射、格式化、脱敏和 Telegram 展现风格。
-- **主流程降噪**：API 查询管理界面默认把高级请求项与结果细项折叠起来，优先突出“选模板、填路径、预览、点选字段、保存”的最短路径。
-- **线上排查日志**：Webhook、命令编排、API 执行链路已补充结构化日志，默认可按 `traceId / updateId / queryId / command` 串联排查。
-- **配置软删除**：机器人、数据源、查询定义、渠道配置已切换为软删除，默认从管理端和运行时查询中过滤，避免误删后直接丢失配置，同时允许命令名安全复用。
-
-### English
-
-- **Dual datasource model**: the same bot platform supports both database datasources and API datasources.
-- **Preset-first API onboarding**: built-in templates such as weather and crypto price reduce setup steps.
-- **Multiple auth methods**: none, bearer token, basic, API key in header, API key in query.
-- **Visual JSON mapping**: preview API responses, auto-discover fields, and choose/reorder what the bot should reply with.
-- **Unified rendering**: both SQL and API results flow through the same field mapping, formatting, masking, and Telegram reply styles.
-- **Reduced-noise main flow**: advanced request options and result/runtime details are folded by default so the shortest path stays focused on preset, path, preview, field selection, and save.
-- **Operational tracing logs**: structured logs now correlate Webhook, dispatch, and API execution with `traceId / updateId / queryId / command` for production troubleshooting.
-- **Soft-deleted config entities**: bots, datasources, query definitions, and channel configs are now hidden by soft delete instead of being physically removed immediately, reducing accidental loss while still allowing safe command reuse.
-
----
-
-## 自动化脚本 / Automation scripts
-
-| 脚本 | 用途 |
+| 模块 | 说明 |
 |------|------|
-| `scripts/dev/check-docs.ps1` | 检查正式文档是否齐备，README / AGENTS / WORKFLOW 是否包含关键索引与交付约束 |
-| `scripts/dev/run-quality-gates.ps1` | 统一执行文档检查、后端测试、前端构建 |
-| `scripts/dev/deliver.ps1` | 按“测试 -> git add -> commit -> push”顺序执行交付流程 |
+| 机器人管理 | 逻辑分组单元，支持多渠道 |
+| 渠道管理 | 6 大 IM 平台统一接入 |
+| 数据源管理 | 数据库 / API 双模式 |
+| 查询定义 | SQL / 向导 / API 三种模式 |
+| 白名单 | 多平台用户白名单 |
+| 命令日志 | 全平台统一命令日志 |
+| 审计日志 | 管理端操作审计 |
 
-**中文示例：** `powershell -ExecutionPolicy Bypass -File scripts/dev/run-quality-gates.ps1 -SkipBackend`  
-**English example:** `powershell -ExecutionPolicy Bypass -File scripts/dev/deliver.ps1 -Message "docs: 更新测试说明" -SkipBackend -SkipFrontend`
+### V3 - 数据智能
+
+| 模块 | 说明 |
+|------|------|
+| 查询模板市场 | 预置模板 + 一键导入 |
+| 命令统计 | 多维度统计分析 |
+| 渠道健康 | 实时健康监控 |
+| 用户权限 | JWT 认证 + 角色控制 |
+| 告警系统 | 规则配置 + 自动检查 |
+| 插件系统 | 可扩展插件架构 |
+| API 开放平台 | API Key 管理 |
+
+### V4 - AI 驱动
+
+| 模块 | 说明 |
+|------|------|
+| NL2SQL | 自然语言转 SQL 查询 |
+| 异常检测 | 时序异常自动检测 |
+| 智能推荐 | 查询推荐 + 优化建议 |
+| 工作流引擎 | 多步骤流程 + 条件分支 |
+| 定时任务 | Cron 调度 + 任务队列 |
+| 审批流 | 多级审批 + 通知 |
+| SSO/LDAP | 企业统一认证 |
+| 数据脱敏 | 字段级自动脱敏 |
+| 权限矩阵 | 细粒度权限控制 |
+| 合规审计 | 等保三级 / GDPR |
+| 集群部署 | 高可用 + 负载均衡 |
+| 性能优化 | 多级缓存 + 查询优化 |
+| 可视化报表 | 仪表盘 + 定时报表 |
+| 多租户 | 租户管理 + 配额控制 |
+
+---
+
+## API 端点
+
+### 核心 API
+
+```
+GET    /api/admin/bots                    # 机器人列表
+GET    /api/admin/channels                # 渠道列表
+GET    /api/admin/datasources             # 数据源列表
+GET    /api/admin/bots/{id}/queries       # 查询定义列表
+POST   /api/admin/channels/{id}/test      # 渠道连通性测试
+```
+
+### V3 API
+
+```
+GET    /api/admin/templates               # 模板列表
+POST   /api/admin/templates/{id}/import   # 一键导入
+GET    /api/admin/stats/commands          # 命令统计
+GET    /api/admin/channel-health          # 渠道健康
+POST   /api/auth/login                    # 用户登录
+```
+
+### V4 API
+
+```
+POST   /api/admin/ai/nl2sql               # NL2SQL 查询
+GET    /api/admin/ai/anomalies            # 异常检测
+GET    /api/admin/v4/recommendations      # 智能推荐
+GET    /api/admin/v4/workflows            # 工作流管理
+GET    /api/admin/v4/approvals/pending    # 待审批
+GET    /api/admin/v4/audit/report         # 合规报告
+GET    /api/admin/v4/gateway/keys         # API Key
+GET    /api/admin/v4/cluster/status       # 集群状态
+GET    /api/admin/v4/performance/hints    # 性能建议
+GET    /api/admin/v4/tenants              # 租户列表
+```
+
+---
+
+## 技术栈
+
+### 后端
+
+| 技术 | 版本 | 说明 |
+|------|------|------|
+| Spring Boot | 3.2.5 | 应用框架 |
+| MyBatis-Plus | 3.5.5 | ORM 框架 |
+| Flyway | 10.10.0 | 数据库迁移 |
+| Caffeine | - | 本地缓存 |
+| Redis | 7+ | 分布式缓存 |
+| Prometheus | - | 指标采集 |
+| JWT | 0.12.5 | 认证令牌 |
+
+### 前端
+
+| 技术 | 版本 | 说明 |
+|------|------|------|
+| Vue | 3.4+ | 前端框架 |
+| Element Plus | 2.7+ | UI 组件库 |
+| Vite | 5.0+ | 构建工具 |
+| TypeScript | 5.0+ | 类型系统 |
+| Pinia | 2.1+ | 状态管理 |
+
+---
+
+## 项目结构
+
+```
+im-bot-hub/
+├── backend/                    # 后端 Spring Boot 项目
+│   ├── src/main/java/com/sov/imhub/
+│   │   ├── ai/                # AI 服务（NL2SQL、异常检测、推荐）
+│   │   ├── analytics/         # 报表服务
+│   │   ├── cluster/           # 集群服务
+│   │   ├── config/            # 配置类
+│   │   ├── domain/            # 实体类
+│   │   ├── gateway/           # API 网关
+│   │   ├── im/                # IM 平台集成
+│   │   ├── mapper/            # MyBatis Mapper
+│   │   ├── multiTenant/       # 多租户
+│   │   ├── performance/       # 性能优化
+│   │   ├── plugin/            # 插件系统
+│   │   ├── scheduler/         # 定时任务
+│   │   ├── security/          # 安全服务
+│   │   ├── service/           # 业务服务
+│   │   ├── web/               # Web 控制器
+│   │   └── workflow/          # 工作流引擎
+│   └── src/main/resources/
+│       ├── db/migration/      # Flyway 迁移脚本
+│       └── application*.yml   # 配置文件
+├── admin-ui/                   # 前端 Vue 项目
+│   ├── src/
+│   │   ├── components/        # 组件
+│   │   ├── views/             # 页面
+│   │   ├── api/               # API 客户端
+│   │   ├── utils/             # 工具函数
+│   │   └── auth/              # 认证相关
+│   └── package.json
+├── docs/                       # 文档
+│   ├── PRD-V2.md              # 产品需求文档
+│   ├── DESIGN-V2.md           # 设计文档
+│   ├── ROADMAP-V3.md          # V3 路线图
+│   ├── ROADMAP-V4.md          # V4 路线图
+│   └── TECHNICAL-DEBT*.md     # 技术债清单
+└── scripts/                    # 脚本
+    └── install-v3-deps.sh     # 依赖安装脚本
+```
+
+---
+
+## 数据库
+
+### 迁移脚本
+
+| 版本 | 说明 |
+|------|------|
+| V1 | 初始化表结构 |
+| V2 | 系统设置表 |
+| V3 | 白名单多平台支持 |
+| V4 | 查询渠道作用域 |
+| V5 | 查询模板市场 |
+| V6 | 命令统计 |
+| V7 | 渠道健康日志 |
+| V8 | 管理用户 |
+| V9 | 告警系统 |
+| V10 | API Key |
+| V11 | NL2SQL + 异常检测 |
+| V12 | 工作流引擎 |
+| V13 | SSO + 安全 + 多租户 |
+
+---
+
+## 配置
+
+### application-local.yml
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3307/im_hub
+    username: root
+    password: your_password
+  data:
+    redis:
+      host: localhost
+      port: 6380
+
+app:
+  security:
+    admin:
+      username: admin
+      password: your_password
+  ai:
+    provider: openai
+    api-key: your_openai_api_key
+    model: gpt-4
+```
+
+---
+
+## 开发规范
+
+- 提交信息使用**中文**
+- 后端改动后运行 `mvn test`
+- 前端改动后运行 `npm run build`
+- 代码规范见 `.claude/rules/CODE_QUALITY.md`
+
+---
+
+## 文档
+
+| 文档 | 说明 |
+|------|------|
+| [PRD-V2.md](docs/PRD-V2.md) | 产品需求文档 |
+| [DESIGN-V2.md](docs/DESIGN-V2.md) | 架构设计文档 |
+| [ROADMAP-V3.md](docs/ROADMAP-V3.md) | V3 路线图 |
+| [ROADMAP-V4.md](docs/ROADMAP-V4.md) | V4 路线图 |
+| [CODE_QUALITY.md](.claude/rules/CODE_QUALITY.md) | 代码质量规范 |
+| [TECHNICAL-DEBT.md](docs/TECHNICAL-DEBT.md) | 技术债清单 |
+
+---
+
+## 许可证
+
+MIT License
+
+---
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+---
+
+*最后更新：2026-05-03*

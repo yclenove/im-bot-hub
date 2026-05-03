@@ -70,6 +70,19 @@ public class ClusterService {
     }
 
     /**
+     * 每小时清理超过 24 小时的心跳记录。
+     */
+    @Scheduled(cron = "0 0 * * * ?")
+    public void cleanupOldHeartbeats() {
+        int deleted = jdbcTemplate.update(
+                "DELETE FROM t_cluster_node WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 24 HOUR)",
+                Map.of());
+        if (deleted > 0) {
+            log.info("cleaned up {} old heartbeat records", deleted);
+        }
+    }
+
+    /**
      * 获取集群状态。
      */
     public ClusterStatus getClusterStatus() {

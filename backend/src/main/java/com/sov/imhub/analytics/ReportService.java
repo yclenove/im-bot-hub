@@ -116,37 +116,44 @@ public class ReportService {
     }
 
     /**
-     * 生成定时报表。
+     * 生成定时报表（CSV 格式）。
      */
     public byte[] generateReport(String reportType, LocalDate startDate, LocalDate endDate) {
         log.info("generating report: type={}, startDate={}, endDate={}", reportType, startDate, endDate);
 
-        // 根据报表类型生成不同格式
-        switch (reportType) {
-            case "DAILY":
-                return generateDailyReport(startDate, endDate);
-            case "WEEKLY":
-                return generateWeeklyReport(startDate, endDate);
-            case "MONTHLY":
-                return generateMonthlyReport(startDate, endDate);
-            default:
-                throw new IllegalArgumentException("未知报表类型: " + reportType);
+        StringBuilder csv = new StringBuilder();
+
+        // 表头
+        csv.append("日期,命令,总数,成功数,失败数,平均耗时(ms),独立用户数\n");
+
+        // 查询数据
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                """
+                SELECT stat_date, command, total_count, success_count, fail_count, avg_duration_ms, unique_users
+                FROM t_command_stats_daily
+                WHERE stat_date BETWEEN :startDate AND :endDate
+                ORDER BY stat_date DESC, total_count DESC
+                """,
+                Map.of("startDate", startDate, "endDate", endDate));
+
+        for (Map<String, Object> row : rows) {
+            csv.append(row.get("stat_date")).append(",");
+            csv.append(row.get("command")).append(",");
+            csv.append(row.get("total_count")).append(",");
+            csv.append(row.get("success_count")).append(",");
+            csv.append(row.get("fail_count")).append(",");
+            csv.append(row.get("avg_duration_ms")).append(",");
+            csv.append(row.get("unique_users")).append("\n");
         }
-    }
 
-    private byte[] generateDailyReport(LocalDate startDate, LocalDate endDate) {
-        // 生成每日报表
-        return new byte[0];
-    }
+        // 添加 UTF-8 BOM 以支持中文
+        byte[] bom = new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+        byte[] content = csv.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] result = new byte[bom.length + content.length];
+        System.arraycopy(bom, 0, result, 0, bom.length);
+        System.arraycopy(content, 0, result, bom.length, content.length);
 
-    private byte[] generateWeeklyReport(LocalDate startDate, LocalDate endDate) {
-        // 生成每周报表
-        return new byte[0];
-    }
-
-    private byte[] generateMonthlyReport(LocalDate startDate, LocalDate endDate) {
-        // 生成每月报表
-        return new byte[0];
+        return result;
     }
 
     /**

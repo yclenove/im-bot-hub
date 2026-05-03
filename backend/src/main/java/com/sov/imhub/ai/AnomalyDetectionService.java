@@ -89,28 +89,28 @@ public class AnomalyDetectionService {
     }
 
     /**
-     * 获取指标历史数据。
+     * 指标计算配置（支持动态扩展）。
+     */
+    private static final Map<String, String> METRIC_EXPRESSIONS = Map.of(
+            "success_rate", "CASE WHEN SUM(total_count) > 0 THEN SUM(success_count) * 100.0 / SUM(total_count) ELSE 0 END",
+            "avg_response_time", "AVG(avg_duration_ms)",
+            "request_count", "SUM(total_count)",
+            "unique_users", "SUM(unique_users)",
+            "fail_count", "SUM(fail_count)"
+    );
+
+    /**
+     * 获取指标历史数据（支持自定义指标表达式）。
      */
     private List<DataPoint> getMetricHistory(String metricName, int windowMinutes) {
-        String sql = """
-            SELECT created_at as timestamp,
-                   CASE
-                       WHEN :metricName = 'success_rate' THEN
-                           CASE WHEN SUM(total_count) > 0
-                                THEN SUM(success_count) * 100.0 / SUM(total_count)
-                                ELSE 0 END
-                       WHEN :metricName = 'avg_response_time' THEN AVG(avg_duration_ms)
-                       WHEN :metricName = 'request_count' THEN SUM(total_count)
-                       ELSE 0
-                   END as value
-            FROM t_command_stats_daily
-            WHERE stat_date >= DATE_SUB(CURDATE(), INTERVAL :windowDays DAY)
-            GROUP BY stat_date
-            ORDER BY stat_date
-            """;
+        String expression = METRIC_EXPRESSIONS.getOrDefault(metricName, "0");
+
+        String sql = "SELECT created_at as timestamp, " + expression + " as value " +
+                "FROM t_command_stats_daily " +
+                "WHERE stat_date >= DATE_SUB(CURDATE(), INTERVAL :windowDays DAY) " +
+                "GROUP BY stat_date ORDER BY stat_date";
 
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, Map.of(
-                "metricName", metricName,
                 "windowDays", Math.max(1, windowMinutes / 1440)));
 
         List<DataPoint> points = new ArrayList<>();

@@ -23,20 +23,23 @@ public class PerformanceService {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
 
-    // 多级缓存
+    // 多级缓存（使用 Caffeine 自动管理大小和过期）
     private final Cache<String, Object> l1Cache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofMinutes(5))
             .maximumSize(1000)
             .build();
 
-    private final ConcurrentHashMap<String, CacheEntry<?>> queryCache = new ConcurrentHashMap<>();
+    private final Cache<String, CacheEntry<?>> queryCache = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofMinutes(10))
+            .maximumSize(5000)
+            .build();
 
     /**
      * 缓存查询结果。
      */
     @SuppressWarnings("unchecked")
     public <T> T cacheQuery(String key, long ttlSeconds, QuerySupplier<T> supplier) {
-        CacheEntry<?> entry = queryCache.get(key);
+        CacheEntry<?> entry = queryCache.getIfPresent(key);
         if (entry != null && !entry.isExpired()) {
             log.debug("cache hit: {}", key);
             return (T) entry.getValue();
@@ -52,7 +55,7 @@ public class PerformanceService {
      * 清除缓存。
      */
     public void clearCache(String prefix) {
-        queryCache.entrySet().removeIf(entry -> entry.getKey().startsWith(prefix));
+        queryCache.asMap().keySet().removeIf(key -> key.startsWith(prefix));
         log.info("cache cleared: prefix={}", prefix);
     }
 
@@ -62,7 +65,7 @@ public class PerformanceService {
     public CacheStats getCacheStats() {
         CacheStats stats = new CacheStats();
         stats.setL1Size(l1Cache.estimatedSize());
-        stats.setL2Size(queryCache.size());
+        stats.setL2Size(queryCache.estimatedSize());
         return stats;
     }
 
