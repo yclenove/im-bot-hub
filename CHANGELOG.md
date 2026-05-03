@@ -6,6 +6,101 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)（适用时）。  
 **English:** [Semantic Versioning](https://semver.org/) where applicable.
 
+## [4.0.0] - 2026-05-03
+
+### 新增 Added
+
+#### AI 智能
+- **NL2SQL 自然语言查询引擎**：支持自然语言转 SQL，基于规则引擎（API Key 未配置时）或 LLM API
+- **智能异常检测系统**：Z-score 算法时序异常检测，支持自定义指标注册
+- **智能推荐系统**：查询推荐、参数补全、优化建议
+- **LLM 客户端**：支持 OpenAI/Claude API，带缓存和回退机制
+
+#### 工作流引擎
+- **多步骤工作流执行引擎**：支持 QUERY/CONDITION/DELAY/NOTIFICATION/APPROVAL 步骤类型
+- **并行步骤执行**：支持标记 parallel 的步骤并行执行
+- **SpEL 表达式评估**：条件步骤支持 Spring Expression Language
+- **定时任务增强**：Cron 表达式解析（支持星号、星号/N、N、N-M）
+- **审批流集成**：审批规则、审批流程、审批历史
+
+#### 企业级安全
+- **SSO 服务**：OAuth2 认证（token 交换 + 用户信息获取）
+- **数据脱敏服务**：字段级脱敏（手机号、邮箱、身份证、银行卡）
+- **权限矩阵服务**：细粒度权限控制（资源/操作/数据）
+- **合规审计服务**：操作审计、数据审计、合规报告、数据保留策略
+
+#### 开发者生态
+- **API 网关服务**：API Key 管理、限流（Caffeine Cache）、使用统计
+- **插件系统**：PluginInterface + PluginRegistry
+
+#### 高级功能
+- **多租户支持**：租户管理、配额控制（FREE/PRO/ENTERPRISE）
+- **集群服务**：心跳检测、故障转移、负载均衡、心跳清理
+- **性能优化服务**：多级缓存（Caffeine）、查询优化建议、连接池监控
+- **可视化报表服务**：仪表盘数据、CSV 报表生成
+
+#### 前端组件
+- Nl2SqlChat.vue - AI 自然语言查询聊天界面
+- AnomalyDashboard.vue - 异常检测监控面板
+- WorkflowDesigner.vue - 工作流设计器
+- ApprovalManager.vue - 审批管理（待审批 + 历史）
+- ApiKeyManager.vue - API Key 管理
+- ClusterStatus.vue - 集群状态监控
+- PerformanceMonitor.vue - 性能监控
+- TenantManager.vue - 租户管理
+- DatasourceTab.vue - 数据源 Tab（从 Dashboard 提取）
+- QueryTab.vue - 查询定义 Tab（从 Dashboard 提取）
+- DatasourceFormDialog.vue - 数据源表单对话框
+- QueryDefinitionDrawer.vue - 查询定义抽屉
+
+#### 部署
+- Docker Compose 配置（MySQL + Redis + Backend + Frontend + Prometheus + Grafana）
+- Backend Dockerfile（多阶段构建）
+- Frontend Dockerfile（Nginx 反代）
+- Prometheus 监控配置
+
+### 变更 Changed
+
+- Dashboard.vue 类型定义提取到 `types/dashboard.ts`
+- Dashboard.vue 工具函数提取到 `utils/dashboard.ts`
+- README.md 全面重写（架构图、功能模块、API 端点、技术栈、项目结构）
+
+### 修复 Fixed
+
+- LlmClient Mock 改进为基于规则的 SQL 生成
+- SsoService 实现真正的 OAuth2 token 交换
+- WorkflowEngine 实现 SpEL 表达式评估
+- ScheduledTaskService 实现 Cron 表达式解析
+- PermissionService 修复 null 参数处理
+- TenantService 增加配额检查
+- ApprovalService 按审批人过滤待审批列表
+- PerformanceService CacheEntry 改用泛型
+- ApiGatewayService 使用 Caffeine Cache 管理限流计数器
+- ClusterService 添加心跳记录定期清理
+- ReportService 实现 CSV 报表生成
+
+---
+
+## [3.0.0] - 2026-05-02
+
+### 新增 Added
+
+- **查询模板市场**：预置模板 + 一键导入，支持电商/SaaS/运维/自定义分类
+- **命令使用统计**：每日聚合、统计 API、热门命令排行、平台维度统计
+- **Channel 健康检查**：定时检测（5分钟）、状态缓存、历史记录、手动触发
+- **用户角色权限**：JWT 认证、4 种角色（SUPER_ADMIN/ADMIN/OPERATOR/VIEWER）
+- **告警系统**：告警规则配置、告警日志、自动检查（成功率、响应时间）
+- **插件系统**：PluginInterface + PluginRegistry
+- **API 开放平台**：API Key 管理、限流、使用统计
+
+### 变更 Changed
+
+- 查询定义新增 `channel_scope_json` 字段（渠道作用域）
+- 飞书 Webhook 事件去重（event_id + Caffeine Cache）
+- 飞书消息异步处理（@Async + @EnableAsync）
+
+---
+
 ## [Unreleased] 未发布
 
 ### V2 重构 / V2 Refactoring
