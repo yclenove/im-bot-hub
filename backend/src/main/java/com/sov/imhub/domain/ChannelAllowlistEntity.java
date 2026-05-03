@@ -13,6 +13,7 @@ public class ChannelAllowlistEntity {
 
     @TableId(type = IdType.AUTO)
     private Long id;
+    private Long botId;
     private Long channelId;
     private String platform;
     private String externalUserId;

@@ -2,7 +2,7 @@ package com.sov.imhub.service.telegram;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.sov.imhub.domain.Bot;
+import com.sov.imhub.domain.BotChannelEntity;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -15,33 +15,33 @@ class TelegramChatAccessServiceTest {
 
     @Test
     void allScope_acceptsPrivate() {
-        Bot b = new Bot();
-        b.setTelegramChatScope("ALL");
-        assertTrue(svc.allows(b, msg("private", 123L)));
+        BotChannelEntity ch = new BotChannelEntity();
+        ch.setChatScope("ALL");
+        assertTrue(svc.allows(ch, msg("private", 123L)));
     }
 
     @Test
     void groupsOnly_rejectsPrivate() {
-        Bot b = new Bot();
-        b.setTelegramChatScope("GROUPS_ONLY");
-        b.setTelegramAllowedChatIdsJson("[-100123]");
-        assertFalse(svc.allows(b, msg("private", 123L)));
+        BotChannelEntity ch = new BotChannelEntity();
+        ch.setChatScope("GROUPS_ONLY");
+        ch.setAllowedChatIdsJson("[-100123]");
+        assertFalse(svc.allows(ch, msg("private", 123L)));
     }
 
     @Test
     void groupsOnly_acceptsListedGroup() {
-        Bot b = new Bot();
-        b.setTelegramChatScope("GROUPS_ONLY");
-        b.setTelegramAllowedChatIdsJson("[-100123, -100456]");
-        assertTrue(svc.allows(b, msg("supergroup", -100123L)));
+        BotChannelEntity ch = new BotChannelEntity();
+        ch.setChatScope("GROUPS_ONLY");
+        ch.setAllowedChatIdsJson("[-100123, -100456]");
+        assertTrue(svc.allows(ch, msg("supergroup", -100123L)));
     }
 
     @Test
     void groupsOnly_rejectsUnlistedGroup() {
-        Bot b = new Bot();
-        b.setTelegramChatScope("GROUPS_ONLY");
-        b.setTelegramAllowedChatIdsJson("[-100123]");
-        assertFalse(svc.allows(b, msg("supergroup", -999L)));
+        BotChannelEntity ch = new BotChannelEntity();
+        ch.setChatScope("GROUPS_ONLY");
+        ch.setAllowedChatIdsJson("[-100123]");
+        assertFalse(svc.allows(ch, msg("supergroup", -999L)));
     }
 
     private ObjectNode msg(String chatType, long chatId) {

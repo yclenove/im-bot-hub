@@ -11,19 +11,10 @@ import com.sov.imhub.domain.QueryDefinitionEntity;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
-@Mapper(componentModel = "spring", uses = SensitiveMasker.class)
+@Mapper(componentModel = "spring")
 public interface AdminDtoMapper {
 
-    @Mapping(target = "telegramBotTokenMasked", source = "telegramBotToken", qualifiedByName = "maskToken")
-    @Mapping(target = "webhookSecretTokenMasked", source = "webhookSecretToken", qualifiedByName = "maskOptionalToken")
     @Mapping(target = "enabled", expression = "java(Boolean.TRUE.equals(bot.getEnabled()))")
-    @Mapping(
-            target = "telegramChatScope",
-            expression =
-                    "java(bot.getTelegramChatScope() != null && !bot.getTelegramChatScope().isBlank() ? bot.getTelegramChatScope() : \"ALL\")")
-    @Mapping(
-            target = "telegramAllowedChatIds",
-            expression = "java(com.sov.imhub.util.TelegramChatIdsJson.parse(bot.getTelegramAllowedChatIdsJson()))")
     BotResponse toBotResponse(Bot bot);
 
     DatasourceResponse toDatasourceResponse(DatasourceEntity e);

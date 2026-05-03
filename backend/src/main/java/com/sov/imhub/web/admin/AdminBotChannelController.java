@@ -96,8 +96,53 @@ public class AdminBotChannelController {
                 cred.put("encodingAesKey", req.getEncodingAesKey().trim());
                 e.setPlatform("WEWORK");
                 e.setCredentialsJson(ChannelCredentialsCrypto.seal(encryptionService, cred.toString()));
+            } else if ("TELEGRAM".equals(p)) {
+                if (!StringUtils.hasText(req.getBotToken())) {
+                    throw new IllegalArgumentException("TELEGRAM 渠道需提供 botToken");
+                }
+                ObjectNode cred = MAPPER.createObjectNode();
+                cred.put("token", req.getBotToken().trim());
+                if (StringUtils.hasText(req.getTelegramBotUsername())) {
+                    cred.put("username", req.getTelegramBotUsername().trim());
+                }
+                e.setPlatform("TELEGRAM");
+                e.setCredentialsJson(ChannelCredentialsCrypto.seal(encryptionService, cred.toString()));
+                if (StringUtils.hasText(req.getWebhookSecretToken())) {
+                    e.setWebhookSecretToken(req.getWebhookSecretToken().trim());
+                }
+                String scope = req.getChatScope() == null ? "ALL" : req.getChatScope().trim().toUpperCase();
+                e.setChatScope(scope);
+                if ("GROUPS_ONLY".equals(scope) && req.getAllowedChatIds() != null && !req.getAllowedChatIds().isEmpty()) {
+                    try {
+                        e.setAllowedChatIdsJson(MAPPER.writeValueAsString(req.getAllowedChatIds()));
+                    } catch (Exception ex) {
+                        throw new IllegalStateException("序列化 allowedChatIds 失败", ex);
+                    }
+                }
+            } else if ("SLACK".equals(p)) {
+                if (!StringUtils.hasText(req.getBotToken())) {
+                    throw new IllegalArgumentException("SLACK 渠道需提供 botToken（Slack App Bot User OAuth Token）");
+                }
+                ObjectNode cred = MAPPER.createObjectNode();
+                cred.put("botToken", req.getBotToken().trim());
+                if (StringUtils.hasText(req.getSigningSecret())) {
+                    cred.put("signingSecret", req.getSigningSecret().trim());
+                }
+                e.setPlatform("SLACK");
+                e.setCredentialsJson(ChannelCredentialsCrypto.seal(encryptionService, cred.toString()));
+            } else if ("DISCORD".equals(p)) {
+                if (!StringUtils.hasText(req.getBotToken())) {
+                    throw new IllegalArgumentException("DISCORD 渠道需提供 botToken（Discord Bot Token）");
+                }
+                ObjectNode cred = MAPPER.createObjectNode();
+                cred.put("botToken", req.getBotToken().trim());
+                if (StringUtils.hasText(req.getPublicKey())) {
+                    cred.put("publicKey", req.getPublicKey().trim());
+                }
+                e.setPlatform("DISCORD");
+                e.setCredentialsJson(ChannelCredentialsCrypto.seal(encryptionService, cred.toString()));
             } else {
-                throw new IllegalArgumentException("不支持的平台: " + p + "（当前支持 LARK、DINGTALK、WEWORK）");
+                throw new IllegalArgumentException("不支持的平台: " + p + "（当前支持 TELEGRAM、LARK、DINGTALK、WEWORK、SLACK、DISCORD）");
             }
             botChannelMapper.insert(e);
             auditLogService.log("CREATE", "BOT_CHANNEL", String.valueOf(e.getId()), e.getPlatform() + " bot=" + botId);
@@ -134,10 +179,13 @@ public class AdminBotChannelController {
         String pl = e.getPlatform() == null ? "" : e.getPlatform().toUpperCase(Locale.ROOT);
         String path =
                 switch (pl) {
+                    case "TELEGRAM" -> "/api/webhook/telegram/" + e.getId();
                     case "DINGTALK" -> "/api/webhook/dingtalk/" + e.getId();
                     case "WEWORK" -> "/api/webhook/wework/" + e.getId();
                     case "LARK" -> "/api/webhook/lark/" + e.getId();
-                    default -> "/api/webhook/lark/" + e.getId();
+                    case "SLACK" -> "/api/webhook/slack/" + e.getId();
+                    case "DISCORD" -> "/api/webhook/discord/" + e.getId();
+                    default -> "/api/webhook/unknown/" + e.getId();
                 };
         String webhookUrl = "";
         if (StringUtils.hasText(base)) {
@@ -148,7 +196,15 @@ public class AdminBotChannelController {
         }
         String summary = "";
         String credPlain = ChannelCredentialsCrypto.unwrap(encryptionService, e.getCredentialsJson());
-        if ("LARK".equalsIgnoreCase(e.getPlatform())) {
+        if ("TELEGRAM".equalsIgnoreCase(e.getPlatform())) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode node = MAPPER.readTree(credPlain);
+                String token = node.has("token") ? node.get("token").asText() : "";
+                summary = token.length() > 10 ? token.substring(0, 6) + "…" + token.substring(token.length() - 4) : token;
+            } catch (Exception ignored) {
+                summary = "****";
+            }
+        } else if ("LARK".equalsIgnoreCase(e.getPlatform())) {
             LarkCredentials c = LarkCredentials.fromJson(credPlain);
             String aid = c.getAppId() == null ? "" : c.getAppId();
             summary = aid.length() > 6 ? aid.substring(0, 3) + "…" + aid.substring(aid.length() - 2) : aid;
@@ -163,6 +219,14 @@ public class AdminBotChannelController {
             WeWorkCredentials c = WeWorkCredentials.fromJson(credPlain);
             String cid = c.getCorpId() == null ? "" : c.getCorpId();
             summary = cid.length() > 8 ? cid.substring(0, 4) + "…" + cid.substring(cid.length() - 2) : cid;
+        } else if ("SLACK".equalsIgnoreCase(e.getPlatform()) || "DISCORD".equalsIgnoreCase(e.getPlatform())) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode node = MAPPER.readTree(credPlain);
+                String token = node.has("botToken") ? node.get("botToken").asText() : "";
+                summary = token.length() > 10 ? token.substring(0, 6) + "…" + token.substring(token.length() - 4) : token;
+            } catch (Exception ignored) {
+                summary = "****";
+            }
         }
         return BotChannelResponse.builder()
                 .id(e.getId())

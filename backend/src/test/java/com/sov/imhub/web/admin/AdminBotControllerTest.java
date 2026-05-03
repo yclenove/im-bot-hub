@@ -8,6 +8,7 @@ import com.sov.imhub.mapstruct.AdminDtoMapper;
 import com.sov.imhub.mapper.AuditLogMapper;
 import com.sov.imhub.mapper.BotChannelMapper;
 import com.sov.imhub.mapper.BotMapper;
+import com.sov.imhub.mapper.CommandLogMapper;
 import com.sov.imhub.mapper.QueryDefinitionMapper;
 import com.sov.imhub.service.AuditLogService;
 import com.sov.imhub.web.NotFoundException;
@@ -29,6 +30,7 @@ class AdminBotControllerTest {
     private final BotMapper botMapper = mock(BotMapper.class);
     private final QueryDefinitionMapper queryDefinitionMapper = mock(QueryDefinitionMapper.class);
     private final BotChannelMapper botChannelMapper = mock(BotChannelMapper.class);
+    private final CommandLogMapper commandLogMapper = mock(CommandLogMapper.class);
     private final AuditLogMapper auditLogMapper = mock(AuditLogMapper.class);
     private final AuditLogService auditLogService = new AuditLogService(auditLogMapper);
     private final AdminDtoMapper adminDtoMapper = mock(AdminDtoMapper.class);
@@ -37,6 +39,7 @@ class AdminBotControllerTest {
             botMapper,
             queryDefinitionMapper,
             botChannelMapper,
+            commandLogMapper,
             adminDtoMapper,
             auditLogService);
 

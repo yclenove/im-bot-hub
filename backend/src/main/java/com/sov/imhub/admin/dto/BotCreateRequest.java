@@ -3,8 +3,10 @@ package com.sov.imhub.admin.dto;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
-import java.util.List;
-
+/**
+ * 创建机器人请求（纯逻辑分组）。
+ * 平台凭证通过渠道管理接口添加。
+ */
 @Data
 public class BotCreateRequest {
 
@@ -12,24 +14,4 @@ public class BotCreateRequest {
     private String name;
 
     private boolean enabled = true;
-
-    /** @deprecated Use Channel-based credential management instead. */
-    @Deprecated
-    private String telegramBotToken;
-
-    /** @deprecated Use Channel-based credential management instead. */
-    @Deprecated
-    private String telegramBotUsername;
-
-    /** @deprecated Use Channel-based webhook secret instead. */
-    @Deprecated
-    private String webhookSecretToken;
-
-    /** @deprecated Use Channel-based chat scope instead. */
-    @Deprecated
-    private String telegramChatScope = "ALL";
-
-    /** @deprecated Use Channel-based allowed chat IDs instead. */
-    @Deprecated
-    private List<Long> telegramAllowedChatIds;
 }

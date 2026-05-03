@@ -2,12 +2,14 @@ package com.sov.imhub.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sov.imhub.domain.Bot;
+import com.sov.imhub.domain.BotChannelEntity;
 import com.sov.imhub.domain.DatasourceEntity;
 import com.sov.imhub.domain.FieldMappingEntity;
 import com.sov.imhub.domain.QueryDefinitionEntity;
 import com.sov.imhub.im.ImPlatform;
 import com.sov.imhub.im.InboundCommandContext;
 import com.sov.imhub.im.OutboundMessenger;
+import com.sov.imhub.mapper.BotChannelMapper;
 import com.sov.imhub.mapper.BotMapper;
 import com.sov.imhub.mapper.DatasourceMapper;
 import com.sov.imhub.mapper.FieldMappingMapper;
@@ -40,6 +42,7 @@ import java.util.Map;
 public class QueryOrchestrationService {
 
     private final BotMapper botMapper;
+    private final BotChannelMapper botChannelMapper;
     private final QueryDefinitionMapper queryDefinitionMapper;
     private final DatasourceMapper datasourceMapper;
     private final FieldMappingMapper fieldMappingMapper;
@@ -83,7 +86,8 @@ public class QueryOrchestrationService {
             }
 
             if (ctx.platform() == ImPlatform.TELEGRAM) {
-                if (ctx.telegramMessage() != null && !telegramChatAccessService.allows(bot, ctx.telegramMessage())) {
+                BotChannelEntity channel = botChannelMapper.selectById(ctx.channelId());
+                if (ctx.telegramMessage() != null && !telegramChatAccessService.allows(channel, ctx.telegramMessage())) {
                     log.warn("dispatch blocked by chat access botId={} command={} chatId={}", ctx.botId(), logCommand, ctx.telegramChatId());
                     return;
                 }
@@ -164,6 +168,27 @@ public class QueryOrchestrationService {
                         null);
                 return;
             }
+
+            // 检查渠道作用域：如果查询定义限定了渠道，当前渠道必须在列表中
+            if (!isChannelInScope(qd, ctx.channelId())) {
+                log.info("dispatch channel not in scope queryId={} channelId={} scope={}",
+                        qd.getId(), ctx.channelId(), qd.getChannelScopeJson());
+                messenger.sendUnknownCommand(parsed.command());
+                commandLogService.log(
+                        ctx.botId(),
+                        ctx.channelId(),
+                        ctx.platform(),
+                        ctx.externalUserId(),
+                        ctx.externalChatId(),
+                        logCommand,
+                        qd.getId(),
+                        false,
+                        CommandLogService.KIND_UNKNOWN_COMMAND,
+                        logStarted,
+                        "channel_not_in_scope");
+                return;
+            }
+
             logQueryId = qd.getId();
             LogTraceContext.putQueryId(logQueryId);
             log.info(
@@ -410,6 +435,34 @@ public class QueryOrchestrationService {
             return "-";
         }
         return msg.length() <= 240 ? msg : msg.substring(0, 240) + "...";
+    }
+
+    /**
+     * 检查当前渠道是否在查询定义的渠道作用域内。
+     * 如果 channelScopeJson 为 null 或空数组，则适用于所有渠道。
+     */
+    private static boolean isChannelInScope(QueryDefinitionEntity qd, Long channelId) {
+        if (channelId == null) {
+            return true;
+        }
+        String scopeJson = qd.getChannelScopeJson();
+        if (scopeJson == null || scopeJson.isBlank() || "[]".equals(scopeJson.trim())) {
+            return true; // 未限定 → 所有渠道
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode arr = new com.fasterxml.jackson.databind.ObjectMapper().readTree(scopeJson);
+            if (!arr.isArray() || arr.isEmpty()) {
+                return true;
+            }
+            for (com.fasterxml.jackson.databind.JsonNode node : arr) {
+                if (node.asLong() == channelId) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            return true; // 解析失败 → 不限制
+        }
     }
 
     private String buildParamUsageHintTelegramHtml(QueryDefinitionEntity qd, String command) {

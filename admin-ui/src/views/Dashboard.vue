@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import Sortable from 'sortablejs'
-import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, unref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, unref, watch } from 'vue'
 import type { ElTable } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api/client'
 import { clearCredentials } from '../auth/session'
+import { platformLabel, platformTagType } from '../utils/platform'
 import { buildMysqlJdbcUrl, parseMysqlJdbcUrl } from '../utils/mysqlJdbc'
 import ApiDatasourceFormSection from '../components/datasource/ApiDatasourceFormSection.vue'
 import VisualQueryWizard from '../components/query-def/VisualQueryWizard.vue'
@@ -15,6 +16,13 @@ import {
   findDatasourcePreset,
   type ApiQueryPresetAppliedPayload,
 } from '../utils/apiPresets'
+import OverviewTab from '../components/OverviewTab.vue'
+import BotTab from '../components/BotTab.vue'
+import ChannelTab from '../components/ChannelTab.vue'
+import AllowlistTab from '../components/AllowlistTab.vue'
+import CommandLogTab from '../components/CommandLogTab.vue'
+import AuditLogTab from '../components/AuditLogTab.vue'
+import SettingsTab from '../components/SettingsTab.vue'
 
 const router = useRouter()
 
@@ -70,8 +78,10 @@ type Qd = {
   timeoutMs: number
   maxRows: number
   enabled: boolean
-  /** Telegram HTML 展现样式，见 FieldRenderService */
+  /** 回复展现样式（兼容字段名 telegramReplyStyle），见 FieldRenderService */
   telegramReplyStyle?: string
+  /** 限定适用渠道 ID 列表（JSON 数组），null = 所有渠道 */
+  channelScopeJson?: string | null
 }
 
 type TelegramReplyStyle =
@@ -244,6 +254,15 @@ function payLinkPipelinePreset(): DisplayPipelineStep[] {
 }
 
 const bots = ref<Bot[]>([])
+const botTabRef = ref<InstanceType<typeof BotTab> | null>(null)
+const channelTabRef = ref<InstanceType<typeof ChannelTab> | null>(null)
+const overviewTabRef = ref<InstanceType<typeof OverviewTab> | null>(null)
+
+// 从 BotTab 同步 bots 列表
+watch(() => botTabRef.value?.bots, (val) => {
+  if (val) bots.value = val as Bot[]
+}, { deep: true })
+
 const dsList = ref<Ds[]>([])
 const allowBotId = ref<number | null>(null)
 const queryBotId = ref<number | null>(null)
@@ -258,6 +277,7 @@ const tgLogTotal = ref(0)
 const tgLogPage = ref(1)
 const tgLogSize = ref(20)
 const tgLogBotId = ref<number | null>(null)
+const tgLogPlatform = ref('')
 const tgLogCommand = ref('')
 /** Telegram 查询日志：时间范围 [from, to]，与后端 `from`/`to` ISO 一致 */
 const tgLogTimeRange = ref<[string, string] | null>(null)
@@ -267,45 +287,45 @@ const tgLogSuccess = ref<'all' | 'yes' | 'no'>('all')
 const tgLogTelegramUserId = ref('')
 const tgLogChatId = ref('')
 
-const TG_LOG_KIND_OPTIONS = [
-  { value: 'SUCCESS', label: 'SUCCESS（查询成功）' },
-  { value: 'HELP', label: 'HELP（帮助）' },
-  { value: 'RATE_LIMIT', label: 'RATE_LIMIT（限流）' },
-  { value: 'NOT_ALLOWED', label: 'NOT_ALLOWED（无权限）' },
-  { value: 'UNKNOWN_COMMAND', label: 'UNKNOWN_COMMAND（未知命令）' },
-  { value: 'MISSING_PARAM', label: 'MISSING_PARAM（缺参数）' },
-  { value: 'QUERY_FAILED', label: 'QUERY_FAILED（执行失败）' },
-] as const
 
-/** 管理端「注册 Webhook」对话框里记住上次填的公网基址 */
-const WEBHOOK_BASE_STORAGE_KEY = 'tg_admin_webhook_public_base'
+async function exportQueries() {
+  try {
+    const { data } = await api.get('/admin/export/queries')
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'queries-export.json'; a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('查询定义已导出')
+  } catch { ElMessage.error('导出失败') }
+}
+
+function triggerImportQueries() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json'
+  input.onchange = async (e: Event) => {
+    const file = (e.target as HTMLInputElement).files?.[0]
+    if (!file) return
+    try {
+      const text = await file.text()
+      const items = JSON.parse(text)
+      if (!Array.isArray(items)) { ElMessage.error('JSON 格式错误：应为数组'); return }
+      const { data } = await api.post('/admin/export/import/queries', items)
+      ElMessage.success(`导入完成：新增 ${data.created} 条，跳过 ${data.skipped} 条`)
+      await loadQueries()
+    } catch (err: any) {
+      ElMessage.error(err?.response?.data?.message || '导入失败')
+    }
+  }
+  input.click()
+}
 
 const botDlgOpen = ref(false)
 const botEditId = ref<number | null>(null)
-const tgConfigCollapse = ref<string[]>([])
-const webhookRegDlgOpen = ref(false)
-const webhookRegBot = ref<Bot | null>(null)
-const webhookPublicBase = ref('')
-const webhookRegLoading = ref(false)
-
-const webhookRegPreviewUrl = computed(() => {
-  const raw = webhookPublicBase.value.trim()
-  const b = raw.replace(/\/+$/, '')
-  const id = webhookRegBot.value?.id
-  if (!b || id == null) return '（填写 HTTPS 基址后将显示完整 Webhook URL）'
-  return `${b}/api/webhook/${id}`
-})
-/** Edit mode: user checked「清除 Webhook 密钥」 */
-const clearWebhookSecret = ref(false)
 const botForm = ref({
   name: '',
-  telegramBotToken: '',
-  telegramBotUsername: '',
-  webhookSecretToken: '',
   enabled: true,
-  telegramChatScope: 'ALL' as 'ALL' | 'GROUPS_ONLY',
-  /** 文本框：每行一个 chat_id */
-  telegramAllowedChatIdsText: '',
 })
 
 type BotChannelRow = {
@@ -317,17 +337,218 @@ type BotChannelRow = {
   credentialsSummary: string
 }
 const botChannels = ref<BotChannelRow[]>([])
-const larkChannelDlgOpen = ref(false)
-const larkChannelForm = ref({ appId: '', appSecret: '' })
-const dingChannelDlgOpen = ref(false)
-const dingChannelForm = ref({ appSecret: '' })
-const wxChannelDlgOpen = ref(false)
-const wxChannelForm = ref({
+
+// 全局渠道管理
+const allChannels = ref<BotChannelRow[]>([])
+const channelFilterPlatform = ref('')
+const channelFilterBotId = ref<number | undefined>(undefined)
+
+async function loadAllChannels() {
+  try {
+    const params: Record<string, any> = {}
+    if (channelFilterPlatform.value) params.platform = channelFilterPlatform.value
+    if (channelFilterBotId.value != null) params.botId = channelFilterBotId.value
+    const { data } = await api.get<BotChannelRow[]>('/admin/channels', { params })
+    allChannels.value = data
+  } catch {
+    allChannels.value = []
+  }
+}
+
+async function toggleChannel(row: BotChannelRow) {
+  try {
+    await api.put(`/admin/channels/${row.id}/toggle`)
+    ElMessage.success(`渠道 ${row.id} 已${row.enabled ? '禁用' : '启用'}`)
+    await loadAllChannels()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '操作失败')
+  }
+}
+
+async function deleteChannel(row: BotChannelRow) {
+  try {
+    await ElMessageBox.confirm(`确认删除渠道 ${row.id}（${platformLabel(row.platform)}）？`, '删除确认', { type: 'warning' })
+    await api.delete(`/admin/bots/${row.botId}/channels/${row.id}`)
+    ElMessage.success('渠道已删除')
+    await loadAllChannels()
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e?.response?.data?.message || '删除失败')
+    }
+  }
+}
+
+// 新建渠道对话框
+const addChannelDlgOpen = ref(false)
+const addChannelForm = ref({
+  botId: undefined as number | undefined,
+  platform: 'TELEGRAM',
+  botToken: '',
+  telegramBotUsername: '',
+  webhookSecretToken: '',
+  appId: '',
+  appSecret: '',
   corpId: '',
   agentId: undefined as number | undefined,
   callbackToken: '',
   encodingAesKey: '',
+  signingSecret: '',
+  publicKey: '',
 })
+
+function openAddChannel() {
+  addChannelForm.value = {
+    botId: undefined,
+    platform: 'TELEGRAM',
+    botToken: '',
+    telegramBotUsername: '',
+    webhookSecretToken: '',
+    appId: '',
+    appSecret: '',
+    corpId: '',
+    agentId: undefined,
+    callbackToken: '',
+    encodingAesKey: '',
+    signingSecret: '',
+    publicKey: '',
+  }
+  addChannelDlgOpen.value = true
+}
+
+function onChannelPlatformChange() {
+  addChannelForm.value.botToken = ''
+  addChannelForm.value.telegramBotUsername = ''
+  addChannelForm.value.webhookSecretToken = ''
+  addChannelForm.value.appId = ''
+  addChannelForm.value.appSecret = ''
+  addChannelForm.value.corpId = ''
+  addChannelForm.value.agentId = undefined
+  addChannelForm.value.callbackToken = ''
+  addChannelForm.value.encodingAesKey = ''
+  addChannelForm.value.signingSecret = ''
+  addChannelForm.value.publicKey = ''
+}
+
+// 渠道详情对话框
+const channelDetailDlgOpen = ref(false)
+const channelDetail = ref<BotChannelRow | null>(null)
+const channelWebhookStatus = ref<any>(null)
+const channelWebhookLoading = ref(false)
+const channelWebhookRegLoading = ref(false)
+const channelWebhookPublicBase = ref('')
+const channelTestTargetId = ref('')
+const channelTestLoading = ref(false)
+const channelTestResult = ref<{ success: boolean; message: string } | null>(null)
+
+function openChannelDetail(row: BotChannelRow) {
+  channelDetail.value = row
+  channelWebhookStatus.value = null
+  channelWebhookPublicBase.value = ''
+  channelTestTargetId.value = ''
+  channelTestResult.value = null
+  channelDetailDlgOpen.value = true
+}
+
+async function loadChannelWebhookStatus() {
+  if (!channelDetail.value) return
+  channelWebhookLoading.value = true
+  try {
+    const { data } = await api.get(`/admin/channels/${channelDetail.value.id}/webhook-status`)
+    channelWebhookStatus.value = data
+  } catch (e: any) {
+    channelWebhookStatus.value = { error: e?.response?.data?.message || '查询失败' }
+  } finally {
+    channelWebhookLoading.value = false
+  }
+}
+
+async function registerChannelWebhook() {
+  if (!channelDetail.value) return
+  channelWebhookRegLoading.value = true
+  try {
+    const body: Record<string, string> = {}
+    if (channelWebhookPublicBase.value.trim()) body.publicBaseUrl = channelWebhookPublicBase.value.trim()
+    const { data } = await api.post(`/admin/channels/${channelDetail.value.id}/register-webhook`, body)
+    if (data.telegramOk) {
+      ElMessage.success(data.description || 'Webhook 已注册')
+    } else {
+      ElMessage.error(data.description || '注册失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '注册失败')
+  } finally {
+    channelWebhookRegLoading.value = false
+  }
+}
+
+async function testChannel() {
+  if (!channelDetail.value) return
+  channelTestLoading.value = true
+  channelTestResult.value = null
+  try {
+    const body: Record<string, string> = {}
+    if (channelTestTargetId.value.trim()) body.targetId = channelTestTargetId.value.trim()
+    const { data } = await api.post(`/admin/channels/${channelDetail.value.id}/test`, body)
+    channelTestResult.value = data
+    if (data.success) {
+      ElMessage.success(data.message)
+    } else {
+      ElMessage.error(data.message)
+    }
+  } catch (e: any) {
+    channelTestResult.value = { success: false, message: e?.response?.data?.message || '测试失败' }
+    ElMessage.error('测试失败')
+  } finally {
+    channelTestLoading.value = false
+  }
+}
+
+async function saveAddChannel() {
+  const f = addChannelForm.value
+  if (!f.botId) { ElMessage.warning('请选择机器人'); return }
+  if (!f.platform) { ElMessage.warning('请选择平台'); return }
+
+  const body: Record<string, any> = { platform: f.platform }
+
+  if (f.platform === 'TELEGRAM') {
+    if (!f.botToken.trim()) { ElMessage.warning('请填写 Bot Token'); return }
+    body.botToken = f.botToken.trim()
+    if (f.telegramBotUsername.trim()) body.telegramBotUsername = f.telegramBotUsername.trim()
+    if (f.webhookSecretToken.trim()) body.webhookSecretToken = f.webhookSecretToken.trim()
+  } else if (f.platform === 'LARK') {
+    if (!f.appId.trim() || !f.appSecret.trim()) { ElMessage.warning('请填写 App ID 和 App Secret'); return }
+    body.appId = f.appId.trim()
+    body.appSecret = f.appSecret.trim()
+  } else if (f.platform === 'DINGTALK') {
+    if (!f.appSecret.trim()) { ElMessage.warning('请填写 App Secret'); return }
+    body.appSecret = f.appSecret.trim()
+  } else if (f.platform === 'WEWORK') {
+    if (!f.corpId.trim() || !f.agentId || !f.callbackToken.trim() || !f.encodingAesKey.trim()) {
+      ElMessage.warning('请填写所有必填字段'); return
+    }
+    body.corpId = f.corpId.trim()
+    body.agentId = f.agentId
+    body.callbackToken = f.callbackToken.trim()
+    body.encodingAesKey = f.encodingAesKey.trim()
+  } else if (f.platform === 'SLACK') {
+    if (!f.botToken.trim()) { ElMessage.warning('请填写 Bot Token'); return }
+    body.botToken = f.botToken.trim()
+    if (f.signingSecret.trim()) body.signingSecret = f.signingSecret.trim()
+  } else if (f.platform === 'DISCORD') {
+    if (!f.botToken.trim()) { ElMessage.warning('请填写 Bot Token'); return }
+    body.botToken = f.botToken.trim()
+    if (f.publicKey.trim()) body.publicKey = f.publicKey.trim()
+  }
+
+  try {
+    await api.post(`/admin/bots/${f.botId}/channels`, body)
+    ElMessage.success('渠道已创建')
+    addChannelDlgOpen.value = false
+    await loadAllChannels()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '创建失败')
+  }
+}
 
 async function loadBotChannels(botId: number) {
   try {
@@ -336,110 +557,6 @@ async function loadBotChannels(botId: number) {
   } catch {
     botChannels.value = []
   }
-}
-
-function openAddLarkChannel() {
-  larkChannelForm.value = { appId: '', appSecret: '' }
-  larkChannelDlgOpen.value = true
-}
-
-async function saveLarkChannel() {
-  if (botEditId.value == null) return
-  const appId = larkChannelForm.value.appId.trim()
-  const appSecret = larkChannelForm.value.appSecret.trim()
-  if (!appId || !appSecret) {
-    ElMessage.warning('请填写飞书 App ID 与 App Secret')
-    return
-  }
-  await api.post(`/admin/bots/${botEditId.value}/channels`, { platform: 'LARK', appId, appSecret })
-  ElMessage.success('飞书渠道已创建')
-  larkChannelDlgOpen.value = false
-  await loadBotChannels(botEditId.value)
-}
-
-function openAddDingChannel() {
-  dingChannelForm.value = { appSecret: '' }
-  dingChannelDlgOpen.value = true
-}
-
-async function saveDingChannel() {
-  if (botEditId.value == null) return
-  const appSecret = dingChannelForm.value.appSecret.trim()
-  if (!appSecret) {
-    ElMessage.warning('请填写钉钉机器人 AppSecret（Outgoing 签名校验）')
-    return
-  }
-  await api.post(`/admin/bots/${botEditId.value}/channels`, { platform: 'DINGTALK', appSecret })
-  ElMessage.success('钉钉渠道已创建')
-  dingChannelDlgOpen.value = false
-  await loadBotChannels(botEditId.value)
-}
-
-function openAddWxChannel() {
-  wxChannelForm.value = { corpId: '', agentId: undefined, callbackToken: '', encodingAesKey: '' }
-  wxChannelDlgOpen.value = true
-}
-
-async function saveWxChannel() {
-  if (botEditId.value == null) return
-  const corpId = wxChannelForm.value.corpId.trim()
-  const agentId = wxChannelForm.value.agentId
-  const callbackToken = wxChannelForm.value.callbackToken.trim()
-  const encodingAesKey = wxChannelForm.value.encodingAesKey.trim()
-  if (!corpId || agentId == null || !Number.isFinite(agentId) || agentId < 1 || !callbackToken || !encodingAesKey) {
-    ElMessage.warning('请填写企业 CorpID、有效 AgentId、Token 与 EncodingAESKey')
-    return
-  }
-  if (encodingAesKey.length < 43) {
-    ElMessage.warning('EncodingAESKey 须为 43 位（与企业微信后台一致）')
-    return
-  }
-  await api.post(`/admin/bots/${botEditId.value}/channels`, {
-    platform: 'WEWORK',
-    corpId,
-    agentId,
-    callbackToken,
-    encodingAesKey,
-  })
-  ElMessage.success('企业微信渠道已创建')
-  wxChannelDlgOpen.value = false
-  await loadBotChannels(botEditId.value)
-}
-
-async function deleteBotChannel(row: BotChannelRow) {
-  if (botEditId.value == null) return
-  const hint =
-    row.platform === 'DINGTALK'
-      ? '确定删除该钉钉渠道？钉钉机器人后台需同步移除 Outgoing 回调地址。'
-      : row.platform === 'WEWORK'
-        ? '确定删除该企业微信渠道？企业微信应用后台需同步移除接收消息服务器 URL。'
-        : '确定删除该飞书渠道？飞书后台需同步移除事件订阅地址。'
-  try {
-    await ElMessageBox.confirm(hint, '确认删除', { type: 'warning' })
-  } catch {
-    return
-  }
-  await api.delete(`/admin/bots/${botEditId.value}/channels/${row.id}`)
-  ElMessage.success('已删除')
-  await loadBotChannels(botEditId.value)
-}
-
-function formatChatIdsForForm(ids: number[] | undefined): string {
-  if (!ids?.length) return ''
-  return ids.join('\n')
-}
-
-function parseChatIdsFromForm(text: string): number[] {
-  const parts = text
-    .split(/[\s,;]+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const nums: number[] = []
-  for (const p of parts) {
-    const n = Number(p)
-    if (Number.isFinite(n) && Number.isInteger(n)) nums.push(Math.trunc(n))
-  }
-  return nums
 }
 
 const dsDlgOpen = ref(false)
@@ -776,10 +893,32 @@ const qForm = ref({
   telegramReplyStyle: 'LIST' as TelegramReplyStyle,
   telegramJoinDelimiter: ' ',
   apiConfigJson: '',
+  channelScopeJson: null as string | null, // null = 所有渠道
 })
 const visualWizardRef = ref<InstanceType<typeof VisualQueryWizard> | null>(null)
 const apiBuilderRef = ref<InstanceType<typeof ApiQueryBuilder> | null>(null)
 const pendingEditQuery = ref<Qd | null>(null)
+
+// 当前机器人下的渠道列表（用于渠道作用域多选）
+const queryBotChannels = computed(() => {
+  if (!queryBotId.value) return []
+  return allChannels.value.filter((ch) => ch.botId === queryBotId.value)
+})
+
+// 渠道作用域：JSON 字符串 ↔ 数组 双向绑定
+const qFormChannelScope = computed({
+  get: () => {
+    try {
+      const arr = JSON.parse(qForm.value.channelScopeJson || '[]')
+      return Array.isArray(arr) ? arr : []
+    } catch {
+      return []
+    }
+  },
+  set: (val: number[]) => {
+    qForm.value.channelScopeJson = val.length > 0 ? JSON.stringify(val) : null
+  },
+})
 
 const positionalExampleDrafts = ref<string[]>([])
 const lastPositionalParamsKey = ref('')
@@ -1199,6 +1338,7 @@ async function loadTgLogs() {
       page: tgLogPage.value,
       size: tgLogSize.value,
       botId: tgLogBotId.value ?? undefined,
+      platform: tgLogPlatform.value || undefined,
       command: tgLogCommand.value.trim() || undefined,
       from,
       to,
@@ -1225,6 +1365,7 @@ onMounted(async () => {
     await loadQueries()
     await loadAudits()
     await loadTgLogs()
+    await loadAllChannels()
   } catch {
     /* 错误提示由 api client 拦截器统一处理 */
   } finally {
@@ -1232,180 +1373,53 @@ onMounted(async () => {
   }
 })
 
+watch([channelFilterPlatform, channelFilterBotId], () => {
+  loadAllChannels()
+})
+
 function openNewBot() {
   botChannels.value = []
-  clearWebhookSecret.value = false
   botEditId.value = null
   botForm.value = {
     name: '',
-    telegramBotToken: '',
-    telegramBotUsername: '',
-    webhookSecretToken: '',
     enabled: true,
-    telegramChatScope: 'ALL',
-    telegramAllowedChatIdsText: '',
   }
   botDlgOpen.value = true
 }
 
 async function openEditBot(row: Bot) {
-  clearWebhookSecret.value = false
   const { data } = await api.get<Bot>(`/admin/bots/${row.id}`)
   botEditId.value = data.id
   botForm.value = {
     name: data.name,
-    telegramBotToken: '',
-    telegramBotUsername: data.telegramBotUsername ?? '',
-    webhookSecretToken: '',
     enabled: data.enabled,
-    telegramChatScope: (data.telegramChatScope === 'GROUPS_ONLY' ? 'GROUPS_ONLY' : 'ALL') as 'ALL' | 'GROUPS_ONLY',
-    telegramAllowedChatIdsText: formatChatIdsForForm(data.telegramAllowedChatIds),
   }
   botDlgOpen.value = true
   await loadBotChannels(data.id)
 }
 
 async function saveBot() {
-  const chatIds = parseChatIdsFromForm(botForm.value.telegramAllowedChatIdsText)
-  if (botForm.value.telegramChatScope === 'GROUPS_ONLY' && !chatIds.length) {
-    ElMessage.warning('选择「仅指定群」时请在下方填写至少一个群 chat_id（每行一个，一般为负整数）')
+  if (!botForm.value.name.trim()) {
+    ElMessage.warning('请填写机器人名称')
     return
   }
   if (botEditId.value != null) {
-    const body: Record<string, unknown> = {
+    await api.put(`/admin/bots/${botEditId.value}`, {
       name: botForm.value.name,
-      telegramBotUsername: botForm.value.telegramBotUsername || null,
       enabled: botForm.value.enabled,
-      telegramChatScope: botForm.value.telegramChatScope,
-      telegramAllowedChatIds:
-        botForm.value.telegramChatScope === 'GROUPS_ONLY' ? chatIds : [],
-    }
-    if (botForm.value.telegramBotToken?.trim()) {
-      body.telegramBotToken = botForm.value.telegramBotToken.trim()
-    }
-    if (clearWebhookSecret.value) {
-      body.webhookSecretToken = ''
-    } else if (botForm.value.webhookSecretToken.trim()) {
-      body.webhookSecretToken = botForm.value.webhookSecretToken.trim()
-    }
-    await api.put(`/admin/bots/${botEditId.value}`, body)
+    })
     ElMessage.success('机器人已更新')
     await loadBotChannels(botEditId.value)
   } else {
-    if (!botForm.value.name.trim()) {
-      ElMessage.warning('请填写机器人名称')
-      return
-    }
-    if (!botForm.value.telegramBotToken?.trim()) {
-      ElMessage.warning('请填写 Bot Token')
-      return
-    }
-    const createBody: Record<string, unknown> = {
+    await api.post('/admin/bots', {
       name: botForm.value.name.trim(),
-      telegramBotToken: botForm.value.telegramBotToken.trim(),
-      telegramBotUsername: botForm.value.telegramBotUsername || undefined,
       enabled: botForm.value.enabled,
-      telegramChatScope: botForm.value.telegramChatScope,
-      telegramAllowedChatIds:
-        botForm.value.telegramChatScope === 'GROUPS_ONLY' ? chatIds : [],
-    }
-    if (botForm.value.webhookSecretToken?.trim()) {
-      createBody.webhookSecretToken = botForm.value.webhookSecretToken.trim()
-    }
-    await api.post('/admin/bots', createBody)
+    })
     ElMessage.success('机器人已创建')
   }
   botDlgOpen.value = false
   await loadBots()
   await loadQueries()
-}
-
-type WebhookRegResult = { telegramOk: boolean; description: string; webhookUrl: string }
-type WebhookInfoData = {
-  telegramOk: boolean
-  description: string | null
-  url: string | null
-  pendingUpdateCount: number | null
-  lastErrorMessage: string | null
-  lastErrorDate: number | null
-  maxConnections: number | null
-  ipAddress: string | null
-  hasCustomCertificate: boolean | null
-}
-
-function openWebhookRegDialog(row: Bot) {
-  webhookRegBot.value = row
-  try {
-    webhookPublicBase.value = localStorage.getItem(WEBHOOK_BASE_STORAGE_KEY) ?? ''
-  } catch {
-    webhookPublicBase.value = ''
-  }
-  webhookRegDlgOpen.value = true
-}
-
-async function submitWebhookReg() {
-  if (!webhookRegBot.value) return
-  webhookRegLoading.value = true
-  try {
-    const trimmed = webhookPublicBase.value.trim()
-    const body: Record<string, string> = {}
-    if (trimmed) body.publicBaseUrl = trimmed
-    const { data } = await api.post<WebhookRegResult>(
-      `/admin/bots/${webhookRegBot.value.id}/telegram/set-webhook`,
-      body,
-    )
-    if (trimmed) {
-      try {
-        localStorage.setItem(WEBHOOK_BASE_STORAGE_KEY, trimmed)
-      } catch {
-        /* ignore */
-      }
-    }
-    if (data.telegramOk) {
-      ElMessage.success(data.description ? `${data.description}：${data.webhookUrl}` : data.webhookUrl)
-      webhookRegDlgOpen.value = false
-    } else {
-      ElMessage.error(data.description || 'Telegram 未接受该 Webhook URL')
-    }
-  } finally {
-    webhookRegLoading.value = false
-  }
-}
-
-function handleBotWebhookCommand(row: Bot, cmd: string) {
-  if (cmd === 'reg') {
-    openWebhookRegDialog(row)
-  } else if (cmd === 'info') {
-    void showWebhookInfo(row)
-  }
-}
-
-async function showWebhookInfo(row: Bot) {
-  try {
-    const { data } = await api.get<WebhookInfoData>(`/admin/bots/${row.id}/telegram/webhook-info`)
-    const lines: ReturnType<typeof h>[] = []
-    if (data.telegramOk) {
-      lines.push(
-        h('p', { style: 'margin:6px 0;word-break:break-all' }, `当前 URL：${data.url ?? '（空）'}`),
-      )
-      if (data.pendingUpdateCount != null) {
-        lines.push(h('p', { style: 'margin:6px 0' }, `待处理更新数：${data.pendingUpdateCount}`))
-      }
-      if (data.ipAddress) {
-        lines.push(h('p', { style: 'margin:6px 0' }, `出口 IP：${data.ipAddress}`))
-      }
-      if (data.lastErrorMessage) {
-        lines.push(
-          h('p', { style: 'margin:6px 0;color:var(--el-color-danger)' }, `最后错误：${data.lastErrorMessage}`),
-        )
-      }
-    } else {
-      lines.push(h('p', { style: 'margin:6px 0' }, data.description || 'Telegram API 返回失败'))
-    }
-    await ElMessageBox({ title: 'Telegram Webhook 状态', message: h('div', lines), confirmButtonText: '关闭' })
-  } catch {
-    /* 由 api 拦截器提示 */
-  }
 }
 
 async function deleteBot(row: Bot) {
@@ -1425,6 +1439,26 @@ async function deleteBot(row: Bot) {
   }
   await loadQueries()
   ElMessage.success('已删除')
+}
+
+// 机器人详情对话框
+const botDetailDlgOpen = ref(false)
+const botDetail = ref<any>(null)
+const botDetailLoading = ref(false)
+
+async function openBotDetail(row: Bot) {
+  botDetailDlgOpen.value = true
+  botDetailLoading.value = true
+  botDetail.value = null
+  try {
+    const { data } = await api.get(`/admin/bots/${row.id}/detail`)
+    botDetail.value = data
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '加载详情失败')
+    botDetailDlgOpen.value = false
+  } finally {
+    botDetailLoading.value = false
+  }
 }
 
 function openNewDs() {
@@ -1770,6 +1804,7 @@ function openNewQuery() {
     telegramReplyStyle: 'LIST',
     telegramJoinDelimiter: ' ',
     apiConfigJson: '',
+    channelScopeJson: null,
   }
   qWizardTestArgs.value = ''
   qWizardTestResult.value = ''
@@ -1851,6 +1886,7 @@ async function openEditQuery(row: Qd) {
     telegramReplyStyle: parsedReplyStyle.style,
     telegramJoinDelimiter: parsedReplyStyle.delimiter,
     apiConfigJson: data.apiConfigJson ?? '',
+    channelScopeJson: data.channelScopeJson ?? null,
   }
   qWizardTestArgs.value = ''
   qWizardTestResult.value = ''
@@ -1952,6 +1988,7 @@ async function saveQuery() {
       maxRows: qForm.value.maxRows,
       enabled: qForm.value.enabled,
       telegramReplyStyle: telegramReplyStylePayload,
+      channelScopeJson: qForm.value.channelScopeJson,
     }
   } else if (qQueryMode.value === 'API') {
     const builder = apiBuilderRef.value
@@ -1969,6 +2006,7 @@ async function saveQuery() {
       maxRows: qForm.value.maxRows,
       enabled: qForm.value.enabled,
       telegramReplyStyle: telegramReplyStylePayload,
+      channelScopeJson: qForm.value.channelScopeJson,
     }
   } else {
     if (!qForm.value.sqlTemplate.trim()) {
@@ -1987,6 +2025,7 @@ async function saveQuery() {
       queryMode: 'SQL',
       apiConfigJson: null,
       telegramReplyStyle: telegramReplyStylePayload,
+      channelScopeJson: qForm.value.channelScopeJson,
     }
   }
 
@@ -2033,7 +2072,9 @@ async function runTest() {
   }
 }
 
-const allowRows = ref<{ id: number; telegramUserId: number; enabled: boolean }[]>([])
+const allowRows = ref<any[]>([])
+const allowBatchIds = ref('')
+const allowBatchChannelId = ref<number | null>(null)
 
 async function loadAllow() {
   if (!allowBotId.value) return
@@ -2045,17 +2086,32 @@ async function addAllow(tuid: string) {
   if (!allowBotId.value) return
   const s = tuid.trim()
   if (!s) {
-    ElMessage.warning('请输入 Telegram 用户 ID')
+    ElMessage.warning('请输入用户 ID')
     return
   }
-  const telegramUserId = Number(s)
-  if (!Number.isInteger(telegramUserId) || telegramUserId <= 0) {
-    ElMessage.warning('用户 ID 须为正整数')
-    return
-  }
-  await api.post(`/admin/bots/${allowBotId.value}/allowlist`, { telegramUserId, enabled: true })
+  const body: any = { externalUserId: s, enabled: true }
+  if (allowBatchChannelId.value) body.channelId = allowBatchChannelId.value
+  await api.post(`/admin/bots/${allowBotId.value}/allowlist`, body)
   ElMessage.success('已添加到白名单')
   await loadAllow()
+}
+
+async function batchAddAllow() {
+  if (!allowBotId.value) return
+  if (!allowBatchIds.value.trim()) {
+    ElMessage.warning('请输入用户 ID（多个用逗号或换行分隔）')
+    return
+  }
+  try {
+    const body: any = { externalUserIds: allowBatchIds.value, enabled: true }
+    if (allowBatchChannelId.value) body.channelId = allowBatchChannelId.value
+    const { data } = await api.post(`/admin/bots/${allowBotId.value}/allowlist/batch`, body)
+    ElMessage.success(`批量添加 ${data.created} 条`)
+    allowBatchIds.value = ''
+    await loadAllow()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '批量添加失败')
+  }
 }
 
 async function deleteAllow(id: number) {
@@ -2189,76 +2245,44 @@ onBeforeUnmount(() => {
       <el-collapse v-model="guideExpand" class="admin-guide">
         <el-collapse-item name="guide">
           <template #title>
-            <span class="admin-guide-title">第一次使用？展开查看：从 @BotFather 到发消息测试</span>
+            <span class="admin-guide-title">第一次使用？展开查看快速入门</span>
           </template>
           <p class="admin-hint" style="margin: 0 0 12px 0">
             更完整说明见右上角 <el-button text type="primary" @click.stop="router.push('/guide')">使用说明</el-button> 页面。
           </p>
           <ol class="admin-guide-steps">
             <li>
-              在 Telegram 打开 <strong>@BotFather</strong>，发送 <code>/newbot</code>，按提示创建并<strong>保存 Bot Token</strong>（形如
-              <code>123456:ABC...</code>）。
+              <strong>创建机器人</strong>：点击「机器人」Tab 的<strong>新建机器人</strong>，填写名称即可。机器人是逻辑分组，不含平台配置。
             </li>
             <li>
-              在本页 <strong>数据源</strong> 添加<strong>只读 MySQL</strong>或<strong>API 数据源</strong>（Base URL、鉴权、测试连接）；在
-              <strong>机器人</strong> 中新建并粘贴 Token，记下<strong>机器人 ID</strong>。可选：填写
-              <strong>接收范围</strong>——选「仅指定群」并填写群 <code>chat_id</code> 时，只在所填群内响应，
-              <strong>私聊会被静默忽略</strong>（按群限制，与下面「白名单」不同）。
+              <strong>添加渠道</strong>：点击「渠道管理」Tab 的<strong>新建渠道</strong>，选择机器人和平台（Telegram/飞书/钉钉/企业微信/Slack/Discord），填写平台凭证。
             </li>
             <li>
-              在 <strong>查询定义</strong> 中选择该机器人：数据库源下可选<strong>「向导」</strong>或<strong>「高级 SQL」</strong>（<code>#{参数名}</code>）；API
-              源下为<strong>「API 可视化」</strong>（模板 / 预览 / 点选字段）。可选 <strong>Telegram 展现</strong>。保存后会尽量同步 Telegram
-              <strong>命令菜单</strong>（<code>/</code> 列表）；点菜单只会插入 <code>/命令</code>，参数需在<strong>同一条消息</strong>里手动补上。保存后可用<strong>「测试」</strong>验证。
+              <strong>配置数据源</strong>：在「数据源」Tab 添加<strong>只读 MySQL</strong>或<strong>API 数据源</strong>（Base URL、鉴权、测试连接）。
             </li>
             <li>
-              <strong>Webhook</strong> 需公网 HTTPS。本地用 ngrok / cloudflared 暴露本机
-              <code>18089</code>（或 <code>application.yml</code> 中的端口）后，在机器人行点 <strong>Webhook</strong> 选「注册 Webhook」即可（不必手写浏览器 URL）；「查看 Webhook 状态」可核对。若设置了
-              Secret，须与机器人配置里 <strong>Webhook 密钥</strong>一致。
+              <strong>创建查询</strong>：在「查询定义」Tab 选择机器人，新建查询。数据库源可选<strong>「向导」</strong>或<strong>「高级 SQL」</strong>；API 源可选<strong>「API 可视化」</strong>。保存后可用<strong>「测试」</strong>验证。
             </li>
             <li>
-              <strong>白名单</strong>（本页「白名单」标签）按 <strong>Telegram 用户 ID</strong> 限制<strong>谁可以用命令</strong>：为空则所有用户；有记录则仅表中用户。与「仅指定群」可同时使用。
+              <strong>Webhook 配置</strong>：Telegram 渠道系统自动注册 Webhook；其他平台需将 Webhook URL 配置到对应平台后台。
             </li>
             <li>
-              在 Telegram 里向机器人发命令（与查询里填的<strong>命令名</strong>、参数一致），例如
-              <code>/cx 参数值</code>。<strong>群内</strong>建议发 <code>/命令@你的机器人用户名</code>，避免多台 Bot 同群时消息被派错。
+              <strong>发送命令</strong>：在 IM 平台向机器人发命令（与查询里填的<strong>命令名</strong>、参数一致），例如 <code>/cx 参数值</code>。
             </li>
           </ol>
         </el-collapse-item>
       </el-collapse>
 
       <el-tabs v-model="active" type="border-card" class="admin-tabs">
+        <el-tab-pane label="概览" name="overview">
+          <OverviewTab ref="overviewTabRef" />
+        </el-tab-pane>
         <el-tab-pane label="机器人" name="bots">
-          <el-button type="primary" @click="openNewBot">新建机器人</el-button>
-          <el-table :data="bots" style="width: 100%; margin-top: 12px">
-            <el-table-column prop="id" label="ID" width="80" />
-            <el-table-column prop="name" label="名称" />
-            <el-table-column prop="primaryChannelId" label="主渠道 ID" width="100" />
-            <el-table-column prop="enabled" label="启用" width="80" />
-            <el-table-column label="操作" width="248" fixed="right" align="right">
-              <template #default="scope">
-                <div class="bot-table-actions">
-                  <el-button size="small" @click="openEditBot(scope.row)">编辑</el-button>
-                  <el-dropdown trigger="click" @command="(c: string) => handleBotWebhookCommand(scope.row, c)">
-                    <el-button size="small" type="primary" plain>
-                      Webhook
-                    </el-button>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item command="reg">注册 Webhook</el-dropdown-item>
-                        <el-dropdown-item command="info">查看 Webhook 状态</el-dropdown-item>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
-                  <el-button size="small" type="danger" @click="deleteBot(scope.row)">删除</el-button>
-                </div>
-              </template>
-            </el-table-column>
-          </el-table>
-          <p class="admin-hint">
-            Webhook：<code>POST https://公网域名/api/webhook/&lt;botId&gt;</code>（botId 为上表 ID）。用 cloudflared / ngrok 暴露本机
-            <code>18089</code> 后，在行内点 <strong>Webhook</strong> 选「注册 Webhook」即可调用 Telegram；穿透域名变化时重新注册。亦可配置
-            <code>app.telegram.public-base-url</code> 作为默认基址，对话框留空时使用。
-          </p>
+          <BotTab ref="botTabRef" />
+        </el-tab-pane>
+
+        <el-tab-pane label="渠道管理" name="channels">
+          <ChannelTab ref="channelTabRef" :bots="bots" />
         </el-tab-pane>
 
         <el-tab-pane label="数据源" name="ds">
@@ -2303,6 +2327,8 @@ onBeforeUnmount(() => {
             </el-select>
             <el-button @click="loadQueries">刷新</el-button>
             <el-button type="primary" :disabled="!queryBotId" @click="openNewQuery">新建查询</el-button>
+            <el-button @click="exportQueries">导出</el-button>
+            <el-button @click="triggerImportQueries">导入</el-button>
           </div>
           <el-table :data="queries" style="width: 100%; margin-top: 12px">
             <el-table-column prop="id" label="查询 ID" width="80" />
@@ -2360,280 +2386,260 @@ onBeforeUnmount(() => {
         </el-tab-pane>
 
         <el-tab-pane label="白名单" name="a">
-          <div style="display: flex; gap: 12px; align-items: center">
-            <span>机器人</span>
-            <el-select v-model="allowBotId" placeholder="选择机器人" style="width: 240px" @change="loadAllow">
-              <el-option v-for="b in bots" :key="b.id" :label="`${b.id} - ${b.name}`" :value="b.id" />
-            </el-select>
-            <el-button @click="loadAllow">加载</el-button>
-          </div>
-          <div style="margin-top: 12px; display: flex; gap: 8px">
-            <el-input placeholder="Telegram 用户 ID" style="max-width: 240px" v-model="tuid" />
-            <el-button type="primary" @click="addAllow(tuid)">添加</el-button>
-          </div>
-          <el-table :data="allowRows" style="width: 100%; margin-top: 12px">
-            <el-table-column prop="id" label="ID" width="80" />
-            <el-table-column prop="telegramUserId" label="用户 ID" />
-            <el-table-column prop="enabled" label="启用" />
-            <el-table-column label="操作" width="120">
-              <template #default="scope">
-                <el-button size="small" type="danger" @click="deleteAllow(scope.row.id)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <p style="color: #666">若白名单为空，则所有用户都可使用查询命令。</p>
+          <AllowlistTab :bots="bots" />
         </el-tab-pane>
 
         <el-tab-pane label="命令日志" name="tglog">
-          <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px">
-            <el-select v-model="tgLogBotId" placeholder="全部机器人" clearable style="width: 220px">
-              <el-option v-for="b in bots" :key="b.id" :label="`${b.id} - ${b.name}`" :value="b.id" />
-            </el-select>
-            <el-date-picker
-              v-model="tgLogTimeRange"
-              type="datetimerange"
-              range-separator="至"
-              start-placeholder="开始时间"
-              end-placeholder="结束时间"
-              value-format="YYYY-MM-DDTHH:mm:ss"
-              style="width: min(100%, 380px)"
-              clearable
-            />
-            <el-input v-model="tgLogCommand" placeholder="命令关键字" clearable style="max-width: 160px" />
-            <el-select v-model="tgLogErrorKind" clearable placeholder="结果类型" style="width: 200px">
-              <el-option
-                v-for="o in TG_LOG_KIND_OPTIONS"
-                :key="o.value"
-                :label="o.label"
-                :value="o.value"
-              />
-            </el-select>
-            <el-select v-model="tgLogSuccess" placeholder="是否成功" style="width: 120px">
-              <el-option label="不限" value="all" />
-              <el-option label="成功" value="yes" />
-              <el-option label="失败" value="no" />
-            </el-select>
-            <el-input
-              v-model="tgLogTelegramUserId"
-              placeholder="用户 ID"
-              clearable
-              style="max-width: 150px"
-            />
-            <el-input
-              v-model="tgLogChatId"
-              placeholder="会话 chat_id"
-              clearable
-              style="max-width: 170px"
-            />
-            <el-button @click="loadTgLogs">刷新</el-button>
-            <el-button @click="exportTgLogsCsv">导出当前页 CSV</el-button>
-          </div>
-          <el-pagination
-            v-model:current-page="tgLogPage"
-            v-model:page-size="tgLogSize"
-            :total="tgLogTotal"
-            :page-sizes="[10, 20, 50, 100]"
-            layout="total, sizes, prev, pager, next"
-            @size-change="loadTgLogs"
-            @current-change="loadTgLogs"
-          />
-          <el-table :data="tgLogs" style="width: 100%; margin-top: 12px">
-            <el-table-column prop="createdAt" label="时间" width="178" />
-            <el-table-column prop="botId" label="机器人" width="88" />
-            <el-table-column prop="command" label="命令" width="100" />
-            <el-table-column prop="telegramUserId" label="用户 ID" width="120" />
-            <el-table-column prop="chatId" label="会话 ID" width="120" />
-            <el-table-column prop="queryDefinitionId" label="查询 ID" width="96" />
-            <el-table-column label="成功" width="72">
-              <template #default="scope">
-                {{ scope.row.success ? '是' : '否' }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="errorKind" label="类型" width="120" />
-            <el-table-column prop="durationMs" label="耗时 ms" width="96" />
-            <el-table-column prop="detail" label="详情" min-width="160" show-overflow-tooltip />
-          </el-table>
-          <p class="admin-hint" style="margin-top: 12px">
-            仅记录<strong>斜杠命令</strong>的处理结果；不包含业务参数值与 Token。可按机器人、时间、命令、结果类型、是否成功、<strong>用户 ID</strong>、<strong>chat_id</strong>筛选；<strong>导出当前页 CSV</strong>便于本地留存。定期清理可参考仓库
-            <code>scripts/mysql/03-purge-telegram-query-log.sql</code>。
-          </p>
+          <CommandLogTab :bots="bots" />
         </el-tab-pane>
 
         <el-tab-pane label="审计日志" name="audit">
-          <el-button @click="loadAudits">刷新</el-button>
-          <el-pagination
-            v-model:current-page="auditPage"
-            v-model:page-size="auditSize"
-            :total="auditTotal"
-            :page-sizes="[10, 20, 50, 100]"
-            layout="total, sizes, prev, pager, next"
-            style="margin-top: 12px"
-            @size-change="loadAudits"
-            @current-change="loadAudits"
-          />
-          <el-table :data="audits" style="width: 100%; margin-top: 12px">
-            <el-table-column prop="createdAt" label="时间" width="200" />
-            <el-table-column prop="actor" label="操作者" width="120" />
-            <el-table-column prop="action" label="动作" width="140" />
-            <el-table-column prop="resourceType" label="资源类型" width="140" />
-            <el-table-column prop="resourceId" label="资源 ID" width="120" />
-            <el-table-column prop="detail" label="详情" />
-          </el-table>
+          <AuditLogTab />
+        </el-tab-pane>
+
+        <el-tab-pane label="设置" name="settings">
+          <SettingsTab />
         </el-tab-pane>
       </el-tabs>
     </el-main>
   </el-container>
 
-  <el-dialog v-model="botDlgOpen" :title="botEditId != null ? '编辑机器人' : '新建机器人'">
-    <el-form label-width="120px">
-      <el-form-item label="名称"><el-input v-model="botForm.name" /></el-form-item>
-      <el-form-item label="启用"><el-switch v-model="botForm.enabled" /></el-form-item>
 
-      <el-collapse v-model="tgConfigCollapse">
-        <el-collapse-item title="Telegram 配置（旧版 · 请使用渠道管理）" name="tg">
-          <el-form-item label="Bot Token">
-            <el-input v-model="botForm.telegramBotToken" type="password" show-password autocomplete="off" />
-            <span v-if="botEditId != null" style="color: #999; font-size: 12px; display: block; margin-top: 4px">
-              留空则不修改 Token
-            </span>
-          </el-form-item>
-          <el-form-item label="用户名">
-            <el-input
-              v-model="botForm.telegramBotUsername"
-              placeholder="选填：机器人 @用户名，只填英文 ID，不要 @"
-            />
-            <span class="form-hint">在 Telegram 里打开你的机器人资料，用户名形如 <code>@xxx_bot</code>，这里只填 <code>xxx_bot</code>。不知道可留空，不影响 Token 与 Webhook。</span>
-          </el-form-item>
-          <el-form-item label="Webhook 密钥">
-            <el-input v-model="botForm.webhookSecretToken" type="password" show-password autocomplete="off" />
-            <el-checkbox v-if="botEditId != null" v-model="clearWebhookSecret" style="margin-top: 8px">
-              清除已保存的 Webhook 密钥
-            </el-checkbox>
-            <span class="form-hint">
-              <strong>可选。</strong>只有在你调用 Telegram 的 <code>setWebhook</code> 时填写了 <code>secret_token</code> 时才需要填这里，且必须与那边<strong>完全一致</strong>。Telegram 推送消息时会带请求头
-              <code>X-Telegram-Bot-Api-Secret-Token</code>，本系统用来校验。若你从未设置过 Secret，留空即可。编辑时留空表示不修改；勾选上方可清除。
-            </span>
-          </el-form-item>
-          <el-form-item label="接收范围">
-            <el-radio-group v-model="botForm.telegramChatScope">
-              <el-radio-button value="ALL">全部（私聊 + 任意群）</el-radio-button>
-              <el-radio-button value="GROUPS_ONLY">仅下方 chat_id 群（私聊忽略）</el-radio-button>
-            </el-radio-group>
-            <span class="form-hint">选「仅指定群」时，只有列表内的 Telegram 群/超级群会执行查询；私聊与未列出群<strong>静默忽略</strong>（不回复）。</span>
-          </el-form-item>
-          <el-form-item v-if="botForm.telegramChatScope === 'GROUPS_ONLY'" label="允许的群 ID">
-            <el-input
-              v-model="botForm.telegramAllowedChatIdsText"
-              type="textarea"
-              :rows="4"
-              placeholder="每行一个 chat_id，如 -1001234567890（可与机器人同群先发一条，用 getWebhook 日志或第三方机器人查 id）"
-            />
-            <span class="form-hint">超级群 id 一般为 <code>-100</code> 开头的负数；须与管理员在后台保存的<strong>完全一致</strong>。</span>
-          </el-form-item>
-        </el-collapse-item>
-      </el-collapse>
-      <template v-if="botEditId != null">
-        <el-divider content-position="left">IM 渠道（飞书 / 钉钉 / 企业微信）</el-divider>
-        <p class="form-hint">
-          复用本机器人下已配置的<strong>查询命令</strong>。飞书：开放平台自建应用，事件订阅
-          <code>im.message.receive_v1</code>。钉钉：企业内部机器人「Outgoing」回调。企业微信：自建应用「接收消息」GET/POST
-          回调（AES）。需在 <code>application.yml</code> 配置 <code>app.telegram.public-base-url</code> 以便显示完整 HTTPS 地址。
-        </p>
-        <el-button type="primary" plain size="small" @click="openAddLarkChannel">添加飞书应用</el-button>
-        <el-button type="primary" plain size="small" style="margin-left: 8px" @click="openAddDingChannel"
-          >添加钉钉机器人</el-button
-        >
-        <el-button type="primary" plain size="small" style="margin-left: 8px" @click="openAddWxChannel"
-          >添加企业微信应用</el-button
-        >
-        <el-table :data="botChannels" size="small" style="margin-top: 10px" empty-text="暂无 IM 渠道">
-          <el-table-column prop="platform" label="平台" width="88" />
-          <el-table-column prop="webhookUrl" label="Webhook URL" min-width="200">
-            <template #default="scope">
-              <span style="word-break: break-all; font-size: 12px">{{ scope.row.webhookUrl }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="credentialsSummary" label="凭据摘要" width="100" />
-          <el-table-column label="操作" width="88">
-            <template #default="scope">
-              <el-button link type="danger" size="small" @click="deleteBotChannel(scope.row)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+  <el-dialog v-model="dsDlgOpen" :title="dsEditId != null ? '编辑数据源' : '新建数据源（数据库 / API）'" width="720px">
+    <el-form label-width="120px">
+      <el-form-item label="名称"><el-input v-model="dsForm.name" placeholder="例如：订单只读库" /></el-form-item>
+      <el-form-item label="平台" required>
+        <el-select v-model="addChannelForm.platform" placeholder="选择平台" style="width: 100%" @change="onChannelPlatformChange">
+          <el-option label="Telegram" value="TELEGRAM" />
+          <el-option label="飞书" value="LARK" />
+          <el-option label="钉钉" value="DINGTALK" />
+          <el-option label="企业微信" value="WEWORK" />
+          <el-option label="Slack" value="SLACK" />
+          <el-option label="Discord" value="DISCORD" />
+        </el-select>
+      </el-form-item>
+
+      <!-- Telegram 表单 -->
+      <template v-if="addChannelForm.platform === 'TELEGRAM'">
+        <el-form-item label="Bot Token" required>
+          <el-input v-model="addChannelForm.botToken" type="password" show-password placeholder="123456:ABC-DEF..." />
+        </el-form-item>
+        <el-form-item label="用户名">
+          <el-input v-model="addChannelForm.telegramBotUsername" placeholder="选填：xxx_bot" />
+        </el-form-item>
+        <el-form-item label="Webhook 密钥">
+          <el-input v-model="addChannelForm.webhookSecretToken" type="password" show-password placeholder="选填" />
+        </el-form-item>
+      </template>
+
+      <!-- 飞书表单 -->
+      <template v-if="addChannelForm.platform === 'LARK'">
+        <el-form-item label="App ID" required>
+          <el-input v-model="addChannelForm.appId" placeholder="cli_xxx" />
+        </el-form-item>
+        <el-form-item label="App Secret" required>
+          <el-input v-model="addChannelForm.appSecret" type="password" show-password />
+        </el-form-item>
+      </template>
+
+      <!-- 钉钉表单 -->
+      <template v-if="addChannelForm.platform === 'DINGTALK'">
+        <el-form-item label="App Secret" required>
+          <el-input v-model="addChannelForm.appSecret" type="password" show-password placeholder="钉钉机器人 AppSecret" />
+        </el-form-item>
+      </template>
+
+      <!-- 企业微信表单 -->
+      <template v-if="addChannelForm.platform === 'WEWORK'">
+        <el-form-item label="CorpID" required>
+          <el-input v-model="addChannelForm.corpId" placeholder="ww1234567890" />
+        </el-form-item>
+        <el-form-item label="AgentId" required>
+          <el-input-number v-model="addChannelForm.agentId" :min="1" />
+        </el-form-item>
+        <el-form-item label="Token" required>
+          <el-input v-model="addChannelForm.callbackToken" />
+        </el-form-item>
+        <el-form-item label="EncodingAESKey" required>
+          <el-input v-model="addChannelForm.encodingAesKey" placeholder="43 位" />
+        </el-form-item>
+      </template>
+
+      <!-- Slack 表单 -->
+      <template v-if="addChannelForm.platform === 'SLACK'">
+        <el-form-item label="Bot Token" required>
+          <el-input v-model="addChannelForm.botToken" type="password" show-password placeholder="xoxb-..." />
+        </el-form-item>
+        <el-form-item label="Signing Secret">
+          <el-input v-model="addChannelForm.signingSecret" type="password" show-password placeholder="选填" />
+        </el-form-item>
+      </template>
+
+      <!-- Discord 表单 -->
+      <template v-if="addChannelForm.platform === 'DISCORD'">
+        <el-form-item label="Bot Token" required>
+          <el-input v-model="addChannelForm.botToken" type="password" show-password placeholder="MTIzNDU2Nzg5..." />
+        </el-form-item>
+        <el-form-item label="Public Key">
+          <el-input v-model="addChannelForm.publicKey" placeholder="选填：用于验证 Interactions 签名" />
+        </el-form-item>
       </template>
     </el-form>
     <template #footer>
-      <el-button @click="botDlgOpen = false">取消</el-button>
-      <el-button type="primary" @click="saveBot">{{ botEditId != null ? '保存' : '创建' }}</el-button>
+      <el-button @click="addChannelDlgOpen = false">取消</el-button>
+      <el-button type="primary" @click="saveAddChannel">创建</el-button>
     </template>
   </el-dialog>
 
-  <el-dialog v-model="larkChannelDlgOpen" title="添加飞书应用" width="520px" destroy-on-close>
-    <el-form label-width="120px">
-      <el-form-item label="App ID"><el-input v-model="larkChannelForm.appId" placeholder="cli_xxx" /></el-form-item>
-      <el-form-item label="App Secret"><el-input v-model="larkChannelForm.appSecret" type="password" show-password /></el-form-item>
-    </el-form>
+  <!-- 机器人详情对话框 -->
+  <el-dialog v-model="botDetailDlgOpen" title="机器人详情" width="720px" destroy-on-close>
+    <el-skeleton :loading="botDetailLoading" animated>
+      <template v-if="botDetail">
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="ID">{{ botDetail.id }}</el-descriptions-item>
+          <el-descriptions-item label="名称">{{ botDetail.name }}</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="botDetail.enabled ? 'success' : 'info'">{{ botDetail.enabled ? '启用' : '禁用' }}</el-tag>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 关联渠道 -->
+        <el-divider content-position="left">关联渠道（{{ botDetail.channels?.length || 0 }}）</el-divider>
+        <el-table v-if="botDetail.channels?.length" :data="botDetail.channels" size="small" style="width: 100%">
+          <el-table-column prop="id" label="ID" width="70" />
+          <el-table-column prop="platform" label="平台" width="120">
+            <template #default="{ row }">
+              <el-tag :type="platformTagType(row.platform)" size="small">{{ platformLabel(row.platform) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="name" label="名称" />
+          <el-table-column prop="enabled" label="状态" width="80">
+            <template #default="{ row }">
+              <el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '启用' : '禁用' }}</el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-empty v-else description="暂无渠道" :image-size="48" />
+
+        <!-- 关联查询定义 -->
+        <el-divider content-position="left">查询定义（{{ botDetail.queries?.length || 0 }}）</el-divider>
+        <el-table v-if="botDetail.queries?.length" :data="botDetail.queries" size="small" style="width: 100%">
+          <el-table-column prop="id" label="ID" width="70" />
+          <el-table-column prop="command" label="命令" width="120">
+            <template #default="{ row }"><code>/{{ row.command }}</code></template>
+          </el-table-column>
+          <el-table-column prop="name" label="名称" />
+          <el-table-column prop="queryMode" label="模式" width="100" />
+          <el-table-column prop="enabled" label="状态" width="80">
+            <template #default="{ row }">
+              <el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '启用' : '禁用' }}</el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-empty v-else description="暂无查询定义" :image-size="48" />
+
+        <!-- 最近命令日志 -->
+        <el-divider content-position="left">最近命令（{{ botDetail.recentLogs?.length || 0 }}）</el-divider>
+        <el-table v-if="botDetail.recentLogs?.length" :data="botDetail.recentLogs" size="small" style="width: 100%">
+          <el-table-column prop="createdAt" label="时间" width="160" />
+          <el-table-column prop="platform" label="平台" width="100">
+            <template #default="{ row }">
+              <el-tag :type="platformTagType(row.platform)" size="small">{{ platformLabel(row.platform) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="command" label="命令" width="120" />
+          <el-table-column prop="success" label="结果" width="80">
+            <template #default="{ row }">
+              <el-tag :type="row.success ? 'success' : 'danger'" size="small">{{ row.success ? '成功' : '失败' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="durationMs" label="耗时" width="80">
+            <template #default="{ row }">{{ row.durationMs != null ? row.durationMs + 'ms' : '-' }}</template>
+          </el-table-column>
+        </el-table>
+        <el-empty v-else description="暂无命令日志" :image-size="48" />
+      </template>
+    </el-skeleton>
     <template #footer>
-      <el-button @click="larkChannelDlgOpen = false">取消</el-button>
-      <el-button type="primary" @click="saveLarkChannel">创建</el-button>
+      <el-button @click="botDetailDlgOpen = false">关闭</el-button>
     </template>
   </el-dialog>
 
-  <el-dialog v-model="dingChannelDlgOpen" title="添加钉钉 Outgoing 机器人" width="520px" destroy-on-close>
-    <p class="form-hint" style="margin-top: 0">
-      填写钉钉机器人安全设置中的 <strong>AppSecret</strong>（与请求头签名校验一致）。消息体需包含以
-      <code>/</code> 开头的命令，例如群内「<code>@机器人 /cx 单号</code>」。
-    </p>
-    <el-form label-width="120px">
-      <el-form-item label="App Secret">
-        <el-input v-model="dingChannelForm.appSecret" type="password" show-password autocomplete="off" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="dingChannelDlgOpen = false">取消</el-button>
-      <el-button type="primary" @click="saveDingChannel">创建</el-button>
-    </template>
-  </el-dialog>
+  <!-- 渠道详情对话框 -->
+  <el-dialog v-model="channelDetailDlgOpen" title="渠道详情" width="640px" destroy-on-close>
+    <template v-if="channelDetail">
+      <el-descriptions :column="2" border size="small">
+        <el-descriptions-item label="渠道 ID">{{ channelDetail.id }}</el-descriptions-item>
+        <el-descriptions-item label="机器人 ID">{{ channelDetail.botId }}</el-descriptions-item>
+        <el-descriptions-item label="平台">
+          <el-tag :type="platformTagType(channelDetail.platform)">{{ platformLabel(channelDetail.platform) }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag :type="channelDetail.enabled ? 'success' : 'info'">{{ channelDetail.enabled ? '启用' : '禁用' }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="凭证摘要">{{ channelDetail.credentialsSummary }}</el-descriptions-item>
+        <el-descriptions-item label="Webhook URL" :span="2">
+          <span style="word-break: break-all; font-size: 12px">{{ channelDetail.webhookUrl }}</span>
+        </el-descriptions-item>
+      </el-descriptions>
 
-  <el-dialog v-model="wxChannelDlgOpen" title="添加企业微信（自建应用接收消息）" width="560px" destroy-on-close>
-    <p class="form-hint" style="margin-top: 0">
-      在企业微信管理后台为<strong>自建应用</strong>启用「接收消息」，回调 URL 填下表地址；Token、EncodingAESKey、CorpID、AgentId
-      须与后台<strong>完全一致</strong>。用户消息为 <strong>text</strong> 且含 <code>/命令</code> 时才会查询并被动回复（加密 XML）。
-    </p>
-    <el-form label-width="140px">
-      <el-form-item label="企业 CorpID"><el-input v-model="wxChannelForm.corpId" placeholder="ww…" autocomplete="off" /></el-form-item>
-      <el-form-item label="应用 AgentId">
-        <el-input-number v-model="wxChannelForm.agentId" :min="1" :step="1" controls-position="right" style="width: 100%" />
-      </el-form-item>
-      <el-form-item label="Token"><el-input v-model="wxChannelForm.callbackToken" autocomplete="off" /></el-form-item>
-      <el-form-item label="EncodingAESKey">
-        <el-input v-model="wxChannelForm.encodingAesKey" type="password" show-password autocomplete="off" placeholder="43 位" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="wxChannelDlgOpen = false">取消</el-button>
-      <el-button type="primary" @click="saveWxChannel">创建</el-button>
-    </template>
-  </el-dialog>
+      <!-- Telegram Webhook 管理 -->
+      <template v-if="channelDetail.platform === 'TELEGRAM'">
+        <el-divider content-position="left">Webhook 管理</el-divider>
+        <el-form label-width="100px" size="small">
+          <el-form-item label="公网基址">
+            <el-input v-model="channelWebhookPublicBase" placeholder="可留空：使用配置文件默认值" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" :loading="channelWebhookRegLoading" @click="registerChannelWebhook">注册 Webhook</el-button>
+            <el-button :loading="channelWebhookLoading" @click="loadChannelWebhookStatus">查看状态</el-button>
+          </el-form-item>
+        </el-form>
+        <template v-if="channelWebhookStatus">
+          <el-alert v-if="channelWebhookStatus.error" :title="channelWebhookStatus.error" type="error" show-icon :closable="false" />
+          <template v-else>
+            <el-descriptions :column="2" border size="small" style="margin-top: 12px">
+              <el-descriptions-item label="Telegram 状态">{{ channelWebhookStatus.telegramOk ? '正常' : '异常' }}</el-descriptions-item>
+              <el-descriptions-item label="当前 URL">{{ channelWebhookStatus.url || '（空）' }}</el-descriptions-item>
+              <el-descriptions-item label="待处理数">{{ channelWebhookStatus.pendingUpdateCount ?? '-' }}</el-descriptions-item>
+              <el-descriptions-item label="出口 IP">{{ channelWebhookStatus.ipAddress ?? '-' }}</el-descriptions-item>
+              <el-descriptions-item v-if="channelWebhookStatus.lastErrorMessage" label="最后错误" :span="2">
+                <span style="color: var(--el-color-danger)">{{ channelWebhookStatus.lastErrorMessage }}</span>
+              </el-descriptions-item>
+            </el-descriptions>
+          </template>
+        </template>
+      </template>
 
-  <el-dialog v-model="webhookRegDlgOpen" title="向 Telegram 注册 Webhook" width="560px" destroy-on-close>
-    <p class="admin-hint" style="margin-top: 0">
-      填写你的<strong>公网 HTTPS 基址</strong>（无末尾 <code>/</code>），例如 <code>https://xxxx.trycloudflare.com</code>。本系统将把 Telegram 指向：
-    </p>
-    <p style="word-break: break-all; font-size: 13px; margin: 8px 0">
-      <code>{{ webhookRegPreviewUrl }}</code>
-    </p>
-    <el-input
-      v-model="webhookPublicBase"
-      placeholder="可留空：若已配置 app.telegram.public-base-url 则使用默认值"
-      clearable
-    />
-    <p v-if="webhookRegBot" class="form-hint" style="margin-top: 12px">
-      若机器人在后台配置了「Webhook 密钥」，注册时会一并提交给 Telegram（<code>secret_token</code>），与手动 <code>setWebhook</code> 行为一致。
-    </p>
+      <!-- 非 Telegram 平台提示 -->
+      <template v-else>
+        <el-divider content-position="left">Webhook 配置</el-divider>
+        <el-alert title="请将上方 Webhook URL 配置到对应平台的后台" type="info" show-icon :closable="false" />
+      </template>
+
+      <!-- 连通性测试 -->
+      <el-divider content-position="left">连通性测试</el-divider>
+      <el-form label-width="100px" size="small">
+        <el-form-item label="目标 ID">
+          <el-input v-model="channelTestTargetId"
+            :placeholder="channelDetail?.platform === 'TELEGRAM' ? 'chat_id（可留空仅验证 Token）' :
+                          channelDetail?.platform === 'LARK' ? 'open_id 或 oc_ 开头的 chat_id' :
+                          channelDetail?.platform === 'SLACK' ? 'C 开头的 channel_id（可留空仅验证 Token）' :
+                          channelDetail?.platform === 'DISCORD' ? 'channel_id（可留空仅验证 Token）' :
+                          '钉钉/企微仅验证凭证格式'" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="success" :loading="channelTestLoading" @click="testChannel">发送测试</el-button>
+        </el-form-item>
+      </el-form>
+      <el-alert v-if="channelTestResult"
+        :title="channelTestResult.message"
+        :type="channelTestResult.success ? 'success' : 'error'"
+        show-icon :closable="true" @close="channelTestResult = null"
+        style="margin-top: 8px" />
+    </template>
     <template #footer>
-      <el-button @click="webhookRegDlgOpen = false">取消</el-button>
-      <el-button type="primary" :loading="webhookRegLoading" @click="submitWebhookReg">向 Telegram 注册</el-button>
+      <el-button @click="channelDetailDlgOpen = false">关闭</el-button>
     </template>
   </el-dialog>
 
@@ -2748,10 +2754,10 @@ onBeforeUnmount(() => {
           maxlength="128"
           show-word-limit
           clearable
-          placeholder="列表展示与 Telegram 菜单副标题优先；留空则按 API/向导/SQL 推断"
+          placeholder="列表展示与命令菜单副标题优先；留空则按 API/向导/SQL 推断"
         />
       </el-form-item>
-      <el-form-item label="Telegram 菜单描述">
+      <el-form-item label="命令菜单描述">
         <el-input
           v-model="qForm.telegramMenuDescription"
           type="textarea"
@@ -2871,7 +2877,24 @@ onBeforeUnmount(() => {
         <el-form-item label="超时（毫秒）"><el-input-number v-model="qForm.timeoutMs" :min="500" /></el-form-item>
         <el-form-item label="最大行数"><el-input-number v-model="qForm.maxRows" :min="1" /></el-form-item>
         <el-form-item label="启用"><el-switch v-model="qForm.enabled" /></el-form-item>
-        <el-form-item label="Telegram 展现">
+        <el-form-item label="适用渠道">
+          <el-select
+            v-model="qFormChannelScope"
+            multiple
+            clearable
+            placeholder="留空 = 所有渠道"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="ch in queryBotChannels"
+              :key="ch.id"
+              :label="`${platformLabel(ch.platform)} #${ch.id}`"
+              :value="ch.id"
+            />
+          </el-select>
+          <span class="form-hint">留空表示该命令适用于机器人下的所有渠道；选择后仅在指定渠道生效。</span>
+        </el-form-item>
+        <el-form-item label="回复展现样式">
           <el-select v-model="qForm.telegramReplyStyle" style="width: 100%">
             <el-option label="一行一项（默认）" value="LIST" />
             <el-option label="一行一项 · 中间点分隔（窄屏扫读）" value="LIST_DOT" />

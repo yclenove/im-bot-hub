@@ -1,83 +1,129 @@
 package com.sov.imhub.web.admin;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.sov.imhub.admin.dto.AllowlistResponse;
-import com.sov.imhub.admin.dto.AllowlistUpsertRequest;
-import com.sov.imhub.domain.UserAllowlistEntity;
-import com.sov.imhub.mapper.UserAllowlistMapper;
+import com.sov.imhub.admin.dto.ChannelAllowlistResponse;
+import com.sov.imhub.admin.dto.ChannelAllowlistUpsertRequest;
+import com.sov.imhub.domain.BotChannelEntity;
+import com.sov.imhub.domain.ChannelAllowlistEntity;
+import com.sov.imhub.mapper.BotChannelMapper;
+import com.sov.imhub.mapper.ChannelAllowlistMapper;
 import com.sov.imhub.service.AuditLogService;
 import com.sov.imhub.web.NotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * 机器人白名单 API：基于 t_channel_allowlist，按 botId 查询。
+ */
 @RestController
 @RequestMapping("/api/admin/bots/{botId}/allowlist")
 @RequiredArgsConstructor
 public class AdminAllowlistController {
 
-    private final UserAllowlistMapper userAllowlistMapper;
+    private final ChannelAllowlistMapper channelAllowlistMapper;
+    private final BotChannelMapper botChannelMapper;
     private final AuditLogService auditLogService;
 
     @GetMapping
-    public List<AllowlistResponse> list(@PathVariable Long botId) {
-        return userAllowlistMapper
-                .selectList(new LambdaQueryWrapper<UserAllowlistEntity>().eq(UserAllowlistEntity::getBotId, botId))
+    public List<ChannelAllowlistResponse> list(@PathVariable Long botId) {
+        return channelAllowlistMapper
+                .selectList(new LambdaQueryWrapper<ChannelAllowlistEntity>().eq(ChannelAllowlistEntity::getBotId, botId))
                 .stream()
-                .map(
-                        e ->
-                                AllowlistResponse.builder()
-                                        .id(e.getId())
-                                        .botId(e.getBotId())
-                                        .telegramUserId(e.getTelegramUserId())
-                                        .enabled(Boolean.TRUE.equals(e.getEnabled()))
-                                        .build())
+                .map(this::toResp)
                 .collect(Collectors.toList());
     }
 
     @PostMapping
-    public AllowlistResponse create(@PathVariable Long botId, @Valid @RequestBody AllowlistUpsertRequest req) {
-        UserAllowlistEntity e = new UserAllowlistEntity();
+    public ChannelAllowlistResponse create(@PathVariable Long botId, @Valid @RequestBody ChannelAllowlistUpsertRequest req) {
+        // 查找 bot 的第一个渠道获取 platform
+        BotChannelEntity channel = null;
+        if (req.getChannelId() != null) {
+            channel = botChannelMapper.selectById(req.getChannelId());
+        }
+        if (channel == null) {
+            channel = botChannelMapper.selectOne(
+                    new LambdaQueryWrapper<BotChannelEntity>().eq(BotChannelEntity::getBotId, botId).last("LIMIT 1"));
+        }
+
+        ChannelAllowlistEntity e = new ChannelAllowlistEntity();
         e.setBotId(botId);
-        e.setTelegramUserId(req.getTelegramUserId());
+        e.setChannelId(channel != null ? channel.getId() : req.getChannelId());
+        e.setPlatform(channel != null ? channel.getPlatform() : "UNKNOWN");
+        e.setExternalUserId(req.getExternalUserId());
         e.setEnabled(req.isEnabled());
-        userAllowlistMapper.insert(e);
-        auditLogService.log("CREATE", "ALLOWLIST", String.valueOf(e.getId()), String.valueOf(req.getTelegramUserId()));
-        return toResp(userAllowlistMapper.selectById(e.getId()));
+        channelAllowlistMapper.insert(e);
+        auditLogService.log("CREATE", "ALLOWLIST", String.valueOf(e.getId()), req.getExternalUserId());
+        return toResp(channelAllowlistMapper.selectById(e.getId()));
     }
 
-    @PutMapping("/{id}")
-    public AllowlistResponse update(
-            @PathVariable Long botId, @PathVariable Long id, @Valid @RequestBody AllowlistUpsertRequest req) {
-        UserAllowlistEntity e = userAllowlistMapper.selectById(id);
-        if (e == null || !botId.equals(e.getBotId())) {
-            throw new NotFoundException("allowlist entry not found");
+    /**
+     * 批量添加白名单。
+     */
+    @PostMapping("/batch")
+    public Map<String, Object> batchCreate(@PathVariable Long botId, @RequestBody Map<String, Object> body) {
+        String ids = (String) body.get("externalUserIds");
+        Long channelId = body.get("channelId") != null ? Long.valueOf(body.get("channelId").toString()) : null;
+        boolean enabled = body.get("enabled") == null || Boolean.parseBoolean(body.get("enabled").toString());
+
+        if (ids == null || ids.isBlank()) {
+            throw new IllegalArgumentException("externalUserIds 不能为空");
         }
-        e.setTelegramUserId(req.getTelegramUserId());
-        e.setEnabled(req.isEnabled());
-        userAllowlistMapper.updateById(e);
-        auditLogService.log("UPDATE", "ALLOWLIST", String.valueOf(id), String.valueOf(req.getTelegramUserId()));
-        return toResp(userAllowlistMapper.selectById(id));
+
+        // 查找 platform
+        String platform = "UNKNOWN";
+        if (channelId != null) {
+            BotChannelEntity ch = botChannelMapper.selectById(channelId);
+            if (ch != null) platform = ch.getPlatform();
+        } else {
+            BotChannelEntity ch = botChannelMapper.selectOne(
+                    new LambdaQueryWrapper<BotChannelEntity>().eq(BotChannelEntity::getBotId, botId).last("LIMIT 1"));
+            if (ch != null) {
+                platform = ch.getPlatform();
+                channelId = ch.getId();
+            }
+        }
+
+        int created = 0;
+        for (String id : ids.split("[,\\n]")) {
+            String trimmed = id.trim();
+            if (trimmed.isEmpty()) continue;
+            ChannelAllowlistEntity e = new ChannelAllowlistEntity();
+            e.setBotId(botId);
+            e.setChannelId(channelId);
+            e.setPlatform(platform);
+            e.setExternalUserId(trimmed);
+            e.setEnabled(enabled);
+            channelAllowlistMapper.insert(e);
+            created++;
+        }
+        auditLogService.log("BATCH_CREATE", "ALLOWLIST", String.valueOf(botId), "批量添加 " + created + " 条");
+        Map<String, Object> result = new HashMap<>();
+        result.put("created", created);
+        return result;
     }
 
     @DeleteMapping("/{id}")
     public void delete(@PathVariable Long botId, @PathVariable Long id) {
-        UserAllowlistEntity e = userAllowlistMapper.selectById(id);
+        ChannelAllowlistEntity e = channelAllowlistMapper.selectById(id);
         if (e == null || !botId.equals(e.getBotId())) {
             throw new NotFoundException("allowlist entry not found");
         }
-        userAllowlistMapper.deleteById(id);
+        channelAllowlistMapper.deleteById(id);
         auditLogService.log("DELETE", "ALLOWLIST", String.valueOf(id), null);
     }
 
-    private static AllowlistResponse toResp(UserAllowlistEntity e) {
-        return AllowlistResponse.builder()
+    private ChannelAllowlistResponse toResp(ChannelAllowlistEntity e) {
+        return ChannelAllowlistResponse.builder()
                 .id(e.getId())
-                .botId(e.getBotId())
-                .telegramUserId(e.getTelegramUserId())
+                .channelId(e.getChannelId())
+                .platform(e.getPlatform())
+                .externalUserId(e.getExternalUserId())
                 .enabled(Boolean.TRUE.equals(e.getEnabled()))
                 .build();
     }

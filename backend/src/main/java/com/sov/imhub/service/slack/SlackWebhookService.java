@@ -26,7 +26,6 @@ public class SlackWebhookService {
     private final BotChannelMapper botChannelMapper;
     private final ChannelCredentialResolver credentialResolver;
     private final QueryOrchestrationService queryOrchestrationService;
-    private final TelegramCommandParser telegramCommandParser;
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
 
@@ -69,7 +68,7 @@ public class SlackWebhookService {
                         return new SlackWebhookResult(null);
                     }
 
-                    TelegramCommandParser.Parsed parsed = telegramCommandParser.parse(text);
+                    TelegramCommandParser.Parsed parsed = TelegramCommandParser.parse(text);
                     InboundCommandContext ctx = new InboundCommandContext(
                             channel.getBotId(),
                             ImPlatform.SLACK,

@@ -49,4 +49,7 @@ public class QueryDefinitionUpsertRequest {
      * 以 key 为表头输出整块表格。
      */
     private String telegramReplyStyle = "LIST";
+
+    /** 限定适用渠道 ID 列表（JSON 数组），null 或空 = 所有渠道 */
+    private String channelScopeJson;
 }

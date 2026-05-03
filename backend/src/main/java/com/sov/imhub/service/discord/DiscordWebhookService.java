@@ -27,7 +27,6 @@ public class DiscordWebhookService {
     private final BotChannelMapper botChannelMapper;
     private final ChannelCredentialResolver credentialResolver;
     private final QueryOrchestrationService queryOrchestrationService;
-    private final TelegramCommandParser telegramCommandParser;
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
 
@@ -69,7 +68,7 @@ public class DiscordWebhookService {
                     return new DiscordWebhookResult(null);
                 }
 
-                TelegramCommandParser.Parsed parsed = telegramCommandParser.parse(fullCommand);
+                TelegramCommandParser.Parsed parsed = TelegramCommandParser.parse(fullCommand);
                 InboundCommandContext ctx = new InboundCommandContext(
                         channel.getBotId(),
                         ImPlatform.DISCORD,

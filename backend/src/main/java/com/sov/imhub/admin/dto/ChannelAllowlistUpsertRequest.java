@@ -8,5 +8,6 @@ public class ChannelAllowlistUpsertRequest {
     @NotBlank
     private String externalUserId;
 
+    private Long channelId;
     private boolean enabled = true;
 }
